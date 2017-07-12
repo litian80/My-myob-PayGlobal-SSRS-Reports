@@ -1,0 +1,845 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Report xmlns="http://schemas.microsoft.com/sqlserver/reporting/2016/01/reportdefinition" xmlns:rd="http://schemas.microsoft.com/SQLServer/reporting/reportdesigner">
+  <AutoRefresh>0</AutoRefresh>
+  <DataSources>
+    <DataSource Name="PayGlobal">
+      <ConnectionProperties>
+        <DataProvider>SQL</DataProvider>
+        <ConnectString>Data Source=MYOB3RQWH72;Initial Catalog=PG1251NZ_Test2</ConnectString>
+        <IntegratedSecurity>true</IntegratedSecurity>
+      </ConnectionProperties>
+      <rd:SecurityType>Integrated</rd:SecurityType>
+      <rd:DataSourceID>d4150c9a-4362-45c9-bc3a-f265d6c68c5e</rd:DataSourceID>
+    </DataSource>
+  </DataSources>
+  <DataSets>
+    <DataSet Name="paramCompany">
+      <Query>
+        <DataSourceName>PayGlobal</DataSourceName>
+        <CommandText>IF (SELECT COUNT(InternalCompanyCode) FROM InternalCompany) &gt; 0
+BEGIN
+SELECT IC.InternalCompanyCode AS CompanyCode, IC.InternalCompanyCode + ': ' + IC.[Description] AS CompanyDesc
+FROM InternalCompany IC
+ORDER BY IC.InternalCompanyCode
+END
+
+IF (SELECT COUNT(InternalCompanyCode) FROM InternalCompany) = 0
+BEGIN
+SELECT CS.CompanySettingsCode AS CompanyCode, CS.CompanySettingsCode + ': ' + CS.ContactTradeName AS CompanyDesc
+FROM CompanySettings CS
+ORDER BY CS.CompanySettingsCode
+END</CommandText>
+      </Query>
+      <Fields>
+        <Field Name="CompanyCode">
+          <DataField>CompanyCode</DataField>
+          <rd:TypeName>System.String</rd:TypeName>
+        </Field>
+        <Field Name="CompanyDesc">
+          <DataField>CompanyDesc</DataField>
+          <rd:TypeName>System.String</rd:TypeName>
+        </Field>
+      </Fields>
+    </DataSet>
+    <DataSet Name="paramPayPeriod">
+      <Query>
+        <DataSourceName>PayGlobal</DataSourceName>
+        <QueryParameters>
+          <QueryParameter Name="@CompanyCode">
+            <Value>=Parameters!CompanyCode.Value</Value>
+          </QueryParameter>
+        </QueryParameters>
+        <CommandText>IF (SELECT COUNT(InternalCompanyCode) FROM InternalCompany) &gt; 0
+BEGIN
+SELECT P.PayPeriodCode, P.PayPeriodCode + ': ' + P.Description AS PayPeriodDesc
+FROM PayPeriod P
+WHERE P.InternalCompanyCode IN (@CompanyCode)
+ORDER BY P.PayPeriodCode
+END
+
+IF (SELECT COUNT(InternalCompanyCode) FROM InternalCompany) = 0
+BEGIN
+SELECT P.PayPeriodCode, P.PayPeriodCode + ': ' + P.Description AS PayPeriodDesc
+FROM PayPeriod P
+ORDER BY P.PayPeriodCode
+END</CommandText>
+      </Query>
+      <Fields>
+        <Field Name="PayPeriodCode">
+          <DataField>PayPeriodCode</DataField>
+          <rd:TypeName>System.String</rd:TypeName>
+        </Field>
+        <Field Name="PayPeriodDesc">
+          <DataField>PayPeriodDesc</DataField>
+          <rd:TypeName>System.String</rd:TypeName>
+        </Field>
+      </Fields>
+    </DataSet>
+    <DataSet Name="paramAccumulatorType">
+      <Query>
+        <DataSourceName>PayGlobal</DataSourceName>
+        <QueryParameters>
+          <QueryParameter Name="@ShowSuper">
+            <Value>=Parameters!ShowSuper.Value</Value>
+          </QueryParameter>
+        </QueryParameters>
+        <CommandText>SELECT *
+FROM PG.AccumulatorType(@ShowSuper)</CommandText>
+      </Query>
+      <Fields>
+        <Field Name="AccumulatorTypeCode">
+          <DataField>AccumulatorTypeCode</DataField>
+          <rd:TypeName>System.String</rd:TypeName>
+        </Field>
+        <Field Name="AccumulatorTypeDesc">
+          <DataField>AccumulatorTypeDesc</DataField>
+          <rd:TypeName>System.String</rd:TypeName>
+        </Field>
+      </Fields>
+    </DataSet>
+    <DataSet Name="paramAccumulatorDetail">
+      <Query>
+        <DataSourceName>PayGlobal</DataSourceName>
+        <QueryParameters>
+          <QueryParameter Name="@AccumulatorTypeCode">
+            <Value>=Parameters!AccumulatorTypeCode.Value</Value>
+          </QueryParameter>
+        </QueryParameters>
+        <CommandText>SELECT *
+FROM PG.AccumulatorDetail(@AccumulatorTypeCode)</CommandText>
+      </Query>
+      <Fields>
+        <Field Name="AccumulatorCode">
+          <DataField>AccumulatorCode</DataField>
+          <rd:TypeName>System.String</rd:TypeName>
+        </Field>
+        <Field Name="AccumulatorDescription">
+          <DataField>AccumulatorDescription</DataField>
+          <rd:TypeName>System.String</rd:TypeName>
+        </Field>
+        <Field Name="DateFrom">
+          <DataField>DateFrom</DataField>
+          <rd:TypeName>System.DateTime</rd:TypeName>
+        </Field>
+        <Field Name="DateTo">
+          <DataField>DateTo</DataField>
+          <rd:TypeName>System.DateTime</rd:TypeName>
+        </Field>
+      </Fields>
+    </DataSet>
+    <DataSet Name="paramPaySequence">
+      <Query>
+        <DataSourceName>PayGlobal</DataSourceName>
+        <QueryParameters>
+          <QueryParameter Name="@AccumulatorTypeCode">
+            <Value>=Parameters!AccumulatorTypeCode.Value</Value>
+          </QueryParameter>
+          <QueryParameter Name="@AccumulatorCode">
+            <Value>=Parameters!AccumulatorCode.Value</Value>
+          </QueryParameter>
+          <QueryParameter Name="@PayPeriodCode">
+            <Value>=Parameters!PayPeriodCode.Value</Value>
+          </QueryParameter>
+        </QueryParameters>
+        <CommandText>SELECT P.*
+FROM PG.PaySequencePerAccumulatorType(@AccumulatorTypeCode, 1) P
+WHERE P.AccumulatorCode IN (@AccumulatorCode)
+AND P.PayPeriodCode IN (@PayPeriodCode)</CommandText>
+      </Query>
+      <Fields>
+        <Field Name="PaySequence">
+          <DataField>PaySequence</DataField>
+          <rd:TypeName>System.String</rd:TypeName>
+        </Field>
+        <Field Name="Description">
+          <DataField>Description</DataField>
+          <rd:TypeName>System.String</rd:TypeName>
+        </Field>
+        <Field Name="PeriodEnd">
+          <DataField>PeriodEnd</DataField>
+          <rd:TypeName>System.DateTime</rd:TypeName>
+        </Field>
+        <Field Name="AccumulatorCode">
+          <DataField>AccumulatorCode</DataField>
+          <rd:TypeName>System.String</rd:TypeName>
+        </Field>
+        <Field Name="PayPeriodCode">
+          <DataField>PayPeriodCode</DataField>
+          <rd:TypeName>System.String</rd:TypeName>
+        </Field>
+        <Field Name="InternalCompanyCode">
+          <DataField>InternalCompanyCode</DataField>
+          <rd:TypeName>System.String</rd:TypeName>
+        </Field>
+      </Fields>
+    </DataSet>
+    <DataSet Name="dataJobCosting">
+      <Query>
+        <DataSourceName>PayGlobal</DataSourceName>
+        <QueryParameters>
+          <QueryParameter Name="@JobCostHours">
+            <Value>=Parameters!JobCostHours.Value</Value>
+          </QueryParameter>
+          <QueryParameter Name="@PaySeq">
+            <Value>=Parameters!PaySeq.Value</Value>
+          </QueryParameter>
+          <QueryParameter Name="@JobCostAllow">
+            <Value>=Parameters!JobCostAllow.Value</Value>
+          </QueryParameter>
+        </QueryParameters>
+        <CommandText>/*
+Author: Tian Li
+Date: 2017-05-12
+Description: 
+	as jobcode, ActivityCode and ZoneCode are now derived from CostCentre Description
+	dataset for job costing hence rewritten as this one.
+*/
+
+if object_id('tempdb..#tempJC') is not null drop table #tempJC
+
+select e.EmployeeCode
+, e.LastName + ', ' + PG.FirstName(E.FirstNames) AS EmployeeName
+, di.Dim1Code AS DivisionCode
+, di.[Description] AS DivisionDesc
+, cclu.Job
+, cclu.Activity
+, cclu.Zone
+, ha.AllowanceCode
+, ha.Quantity
+, ha.TotalAmount as Amount
+, tpps.PeriodEnd
+, ha.CostCentreCode
+into #tempJC
+from HistoricalAllowance ha
+inner join TransPerPaySequence tpps on tpps.PaySequence=ha.PaySequence
+inner join [PG].[CostCentreDescriptionCodesLU] cclu on cclu.CostCentreCode = ha.CostCentreCode
+inner join AllowanceGroupAllowance al on al.AllowanceCode = ha.AllowanceCode
+				
+inner join Employee e on e.EmployeeCode=ha.EmployeeCode
+inner join Dim1 di on di.Dim1Code=e.Dim1Code
+
+where ha.TotalAmount &lt;&gt; 0
+--/* uncomment, if used in Report, to take existing Pamameter
+and al.AllowanceGroupCode = @JobCostHours
+and al.AllowanceGroupCode = @JobCostAllow
+and di.Dim1Code in (@DivisionCode)
+--*/
+
+select CostCentreCode
+,	sum(Quantity) as Quantity
+,	sum(Amount) as Amount
+,	PeriodEnd
+from #tempJC
+group by CostCentreCode
+,	PeriodEnd</CommandText>
+      </Query>
+      <Fields>
+        <Field Name="CostCentreCode">
+          <DataField>CostCentreCode</DataField>
+          <rd:TypeName>System.String</rd:TypeName>
+        </Field>
+        <Field Name="JobNumber">
+          <DataField>JobNumber</DataField>
+          <rd:TypeName>System.String</rd:TypeName>
+        </Field>
+        <Field Name="CostCodeType">
+          <DataField>CostCodeType</DataField>
+          <rd:TypeName>System.String</rd:TypeName>
+        </Field>
+        <Field Name="CostCodeActivity">
+          <DataField>CostCodeActivity</DataField>
+          <rd:TypeName>System.String</rd:TypeName>
+        </Field>
+        <Field Name="CostCodeZone">
+          <DataField>CostCodeZone</DataField>
+          <rd:TypeName>System.String</rd:TypeName>
+        </Field>
+        <Field Name="AllowanceCode">
+          <DataField>AllowanceCode</DataField>
+          <rd:TypeName>System.String</rd:TypeName>
+        </Field>
+        <Field Name="Quantity">
+          <DataField>Quantity</DataField>
+          <rd:TypeName>System.Decimal</rd:TypeName>
+        </Field>
+        <Field Name="Amount">
+          <DataField>Amount</DataField>
+          <rd:TypeName>System.Decimal</rd:TypeName>
+        </Field>
+        <Field Name="PeriodEnd">
+          <DataField>PeriodEnd</DataField>
+          <rd:TypeName>System.DateTime</rd:TypeName>
+        </Field>
+      </Fields>
+    </DataSet>
+    <DataSet Name="paramPaySeqDesc">
+      <Query>
+        <DataSourceName>PayGlobal</DataSourceName>
+        <QueryParameters>
+          <QueryParameter Name="@PaySeq">
+            <Value>=Parameters!PaySeq.Value</Value>
+          </QueryParameter>
+        </QueryParameters>
+        <CommandText>SELECT TOP 1 ', Period Ending: ' + CONVERT(VARCHAR(12), TPP.PeriodEnd, 103) AS PaySeqDesc
+FROM TransPerPaySequence TPP
+WHERE TPP.PaySequence IN (@PaySeq)
+ORDER BY TPP.PeriodEnd DESC</CommandText>
+      </Query>
+      <Fields>
+        <Field Name="PaySeqDesc">
+          <DataField>PaySeqDesc</DataField>
+          <rd:TypeName>System.String</rd:TypeName>
+        </Field>
+      </Fields>
+    </DataSet>
+    <DataSet Name="paramAllowanceGroup">
+      <Query>
+        <DataSourceName>PayGlobal</DataSourceName>
+        <CommandText>SELECT T.AllowanceGroupCode AS GroupCode, T.AllowanceGroupCode + ': ' +T.[Description] AS GroupDesc
+FROM AllowanceGroup T
+ORDER BY T.AllowanceGroupCode</CommandText>
+      </Query>
+      <Fields>
+        <Field Name="GroupCode">
+          <DataField>GroupCode</DataField>
+          <rd:TypeName>System.String</rd:TypeName>
+        </Field>
+        <Field Name="GroupDesc">
+          <DataField>GroupDesc</DataField>
+          <rd:TypeName>System.String</rd:TypeName>
+        </Field>
+      </Fields>
+    </DataSet>
+  </DataSets>
+  <ReportSections>
+    <ReportSection>
+      <Body>
+        <ReportItems>
+          <Tablix Name="Tablix1">
+            <TablixBody>
+              <TablixColumns>
+                <TablixColumn>
+                  <Width>2.5cm</Width>
+                </TablixColumn>
+                <TablixColumn>
+                  <Width>2.5cm</Width>
+                </TablixColumn>
+                <TablixColumn>
+                  <Width>2.5cm</Width>
+                </TablixColumn>
+                <TablixColumn>
+                  <Width>2.5cm</Width>
+                </TablixColumn>
+              </TablixColumns>
+              <TablixRows>
+                <TablixRow>
+                  <Height>0.6cm</Height>
+                  <TablixCells>
+                    <TablixCell>
+                      <CellContents>
+                        <Textbox Name="Textbox11">
+                          <CanGrow>true</CanGrow>
+                          <KeepTogether>true</KeepTogether>
+                          <Paragraphs>
+                            <Paragraph>
+                              <TextRuns>
+                                <TextRun>
+                                  <Value>Cost Centre Code</Value>
+                                  <Style />
+                                </TextRun>
+                              </TextRuns>
+                              <Style />
+                            </Paragraph>
+                          </Paragraphs>
+                          <rd:DefaultName>Textbox11</rd:DefaultName>
+                          <Style>
+                            <Border>
+                              <Color>LightGrey</Color>
+                              <Style>Solid</Style>
+                            </Border>
+                            <PaddingLeft>2pt</PaddingLeft>
+                            <PaddingRight>2pt</PaddingRight>
+                            <PaddingTop>2pt</PaddingTop>
+                            <PaddingBottom>2pt</PaddingBottom>
+                          </Style>
+                        </Textbox>
+                      </CellContents>
+                    </TablixCell>
+                    <TablixCell>
+                      <CellContents>
+                        <Textbox Name="Textbox13">
+                          <CanGrow>true</CanGrow>
+                          <KeepTogether>true</KeepTogether>
+                          <Paragraphs>
+                            <Paragraph>
+                              <TextRuns>
+                                <TextRun>
+                                  <Value>Quantity</Value>
+                                  <Style />
+                                </TextRun>
+                              </TextRuns>
+                              <Style />
+                            </Paragraph>
+                          </Paragraphs>
+                          <rd:DefaultName>Textbox13</rd:DefaultName>
+                          <Style>
+                            <Border>
+                              <Color>LightGrey</Color>
+                              <Style>Solid</Style>
+                            </Border>
+                            <PaddingLeft>2pt</PaddingLeft>
+                            <PaddingRight>2pt</PaddingRight>
+                            <PaddingTop>2pt</PaddingTop>
+                            <PaddingBottom>2pt</PaddingBottom>
+                          </Style>
+                        </Textbox>
+                      </CellContents>
+                    </TablixCell>
+                    <TablixCell>
+                      <CellContents>
+                        <Textbox Name="Textbox15">
+                          <CanGrow>true</CanGrow>
+                          <KeepTogether>true</KeepTogether>
+                          <Paragraphs>
+                            <Paragraph>
+                              <TextRuns>
+                                <TextRun>
+                                  <Value>Amount</Value>
+                                  <Style />
+                                </TextRun>
+                              </TextRuns>
+                              <Style />
+                            </Paragraph>
+                          </Paragraphs>
+                          <rd:DefaultName>Textbox15</rd:DefaultName>
+                          <Style>
+                            <Border>
+                              <Color>LightGrey</Color>
+                              <Style>Solid</Style>
+                            </Border>
+                            <PaddingLeft>2pt</PaddingLeft>
+                            <PaddingRight>2pt</PaddingRight>
+                            <PaddingTop>2pt</PaddingTop>
+                            <PaddingBottom>2pt</PaddingBottom>
+                          </Style>
+                        </Textbox>
+                      </CellContents>
+                    </TablixCell>
+                    <TablixCell>
+                      <CellContents>
+                        <Textbox Name="Textbox21">
+                          <CanGrow>true</CanGrow>
+                          <KeepTogether>true</KeepTogether>
+                          <Paragraphs>
+                            <Paragraph>
+                              <TextRuns>
+                                <TextRun>
+                                  <Value>Period End</Value>
+                                  <Style />
+                                </TextRun>
+                              </TextRuns>
+                              <Style />
+                            </Paragraph>
+                          </Paragraphs>
+                          <rd:DefaultName>Textbox21</rd:DefaultName>
+                          <Style>
+                            <Border>
+                              <Color>LightGrey</Color>
+                              <Style>Solid</Style>
+                            </Border>
+                            <PaddingLeft>2pt</PaddingLeft>
+                            <PaddingRight>2pt</PaddingRight>
+                            <PaddingTop>2pt</PaddingTop>
+                            <PaddingBottom>2pt</PaddingBottom>
+                          </Style>
+                        </Textbox>
+                      </CellContents>
+                    </TablixCell>
+                  </TablixCells>
+                </TablixRow>
+                <TablixRow>
+                  <Height>0.6cm</Height>
+                  <TablixCells>
+                    <TablixCell>
+                      <CellContents>
+                        <Textbox Name="CostCentreCode">
+                          <CanGrow>true</CanGrow>
+                          <KeepTogether>true</KeepTogether>
+                          <Paragraphs>
+                            <Paragraph>
+                              <TextRuns>
+                                <TextRun>
+                                  <Value>=Fields!CostCentreCode.Value</Value>
+                                  <Style />
+                                </TextRun>
+                              </TextRuns>
+                              <Style />
+                            </Paragraph>
+                          </Paragraphs>
+                          <rd:DefaultName>CostCentreCode</rd:DefaultName>
+                          <Style>
+                            <Border>
+                              <Color>LightGrey</Color>
+                              <Style>Solid</Style>
+                            </Border>
+                            <PaddingLeft>2pt</PaddingLeft>
+                            <PaddingRight>2pt</PaddingRight>
+                            <PaddingTop>2pt</PaddingTop>
+                            <PaddingBottom>2pt</PaddingBottom>
+                          </Style>
+                        </Textbox>
+                      </CellContents>
+                    </TablixCell>
+                    <TablixCell>
+                      <CellContents>
+                        <Textbox Name="Textbox14">
+                          <CanGrow>true</CanGrow>
+                          <KeepTogether>true</KeepTogether>
+                          <Paragraphs>
+                            <Paragraph>
+                              <TextRuns>
+                                <TextRun>
+                                  <Value>=Sum(Fields!Quantity.Value, "dataJobCosting")</Value>
+                                  <Style />
+                                </TextRun>
+                              </TextRuns>
+                              <Style />
+                            </Paragraph>
+                          </Paragraphs>
+                          <rd:DefaultName>Textbox14</rd:DefaultName>
+                          <Style>
+                            <Border>
+                              <Color>LightGrey</Color>
+                              <Style>Solid</Style>
+                            </Border>
+                            <PaddingLeft>2pt</PaddingLeft>
+                            <PaddingRight>2pt</PaddingRight>
+                            <PaddingTop>2pt</PaddingTop>
+                            <PaddingBottom>2pt</PaddingBottom>
+                          </Style>
+                        </Textbox>
+                      </CellContents>
+                    </TablixCell>
+                    <TablixCell>
+                      <CellContents>
+                        <Textbox Name="Textbox16">
+                          <CanGrow>true</CanGrow>
+                          <KeepTogether>true</KeepTogether>
+                          <Paragraphs>
+                            <Paragraph>
+                              <TextRuns>
+                                <TextRun>
+                                  <Value>=Sum(Fields!Amount.Value, "dataJobCosting")</Value>
+                                  <Style />
+                                </TextRun>
+                              </TextRuns>
+                              <Style />
+                            </Paragraph>
+                          </Paragraphs>
+                          <rd:DefaultName>Textbox16</rd:DefaultName>
+                          <Style>
+                            <Border>
+                              <Color>LightGrey</Color>
+                              <Style>Solid</Style>
+                            </Border>
+                            <PaddingLeft>2pt</PaddingLeft>
+                            <PaddingRight>2pt</PaddingRight>
+                            <PaddingTop>2pt</PaddingTop>
+                            <PaddingBottom>2pt</PaddingBottom>
+                          </Style>
+                        </Textbox>
+                      </CellContents>
+                    </TablixCell>
+                    <TablixCell>
+                      <CellContents>
+                        <Textbox Name="PeriodEnd">
+                          <CanGrow>true</CanGrow>
+                          <KeepTogether>true</KeepTogether>
+                          <Paragraphs>
+                            <Paragraph>
+                              <TextRuns>
+                                <TextRun>
+                                  <Value>=Fields!PeriodEnd.Value</Value>
+                                  <Style>
+                                    <Format>d</Format>
+                                  </Style>
+                                </TextRun>
+                              </TextRuns>
+                              <Style />
+                            </Paragraph>
+                          </Paragraphs>
+                          <rd:DefaultName>PeriodEnd</rd:DefaultName>
+                          <Style>
+                            <Border>
+                              <Color>LightGrey</Color>
+                              <Style>Solid</Style>
+                            </Border>
+                            <PaddingLeft>2pt</PaddingLeft>
+                            <PaddingRight>2pt</PaddingRight>
+                            <PaddingTop>2pt</PaddingTop>
+                            <PaddingBottom>2pt</PaddingBottom>
+                          </Style>
+                        </Textbox>
+                      </CellContents>
+                    </TablixCell>
+                  </TablixCells>
+                </TablixRow>
+              </TablixRows>
+            </TablixBody>
+            <TablixColumnHierarchy>
+              <TablixMembers>
+                <TablixMember />
+                <TablixMember />
+                <TablixMember />
+                <TablixMember />
+              </TablixMembers>
+            </TablixColumnHierarchy>
+            <TablixRowHierarchy>
+              <TablixMembers>
+                <TablixMember>
+                  <KeepWithGroup>After</KeepWithGroup>
+                </TablixMember>
+                <TablixMember>
+                  <Group Name="Details" />
+                </TablixMember>
+              </TablixMembers>
+            </TablixRowHierarchy>
+            <DataSetName>dataJobCosting</DataSetName>
+            <Height>1.2cm</Height>
+            <Width>10cm</Width>
+            <Style>
+              <Border>
+                <Style>None</Style>
+              </Border>
+            </Style>
+          </Tablix>
+        </ReportItems>
+        <Height>0.47244in</Height>
+        <Style />
+      </Body>
+      <Width>3.93701in</Width>
+      <Page>
+        <PageHeight>21cm</PageHeight>
+        <PageWidth>29.7cm</PageWidth>
+        <LeftMargin>0.4cm</LeftMargin>
+        <RightMargin>0.4cm</RightMargin>
+        <TopMargin>0.75cm</TopMargin>
+        <BottomMargin>0.75cm</BottomMargin>
+        <ColumnSpacing>0.13cm</ColumnSpacing>
+        <Style />
+      </Page>
+    </ReportSection>
+  </ReportSections>
+  <ReportParameters>
+    <ReportParameter Name="ShowSuper">
+      <DataType>String</DataType>
+      <DefaultValue>
+        <Values>
+          <Value>0</Value>
+        </Values>
+      </DefaultValue>
+      <Prompt>Show Super</Prompt>
+      <Hidden>true</Hidden>
+      <ValidValues>
+        <ParameterValues>
+          <ParameterValue>
+            <Value>1</Value>
+            <Label>Yes</Label>
+          </ParameterValue>
+          <ParameterValue>
+            <Value>0</Value>
+            <Label>No</Label>
+          </ParameterValue>
+        </ParameterValues>
+      </ValidValues>
+    </ReportParameter>
+    <ReportParameter Name="CompanyCode">
+      <DataType>String</DataType>
+      <DefaultValue>
+        <DataSetReference>
+          <DataSetName>paramCompany</DataSetName>
+          <ValueField>CompanyCode</ValueField>
+        </DataSetReference>
+      </DefaultValue>
+      <Prompt>Company Code</Prompt>
+      <ValidValues>
+        <DataSetReference>
+          <DataSetName>paramCompany</DataSetName>
+          <ValueField>CompanyCode</ValueField>
+          <LabelField>CompanyDesc</LabelField>
+        </DataSetReference>
+      </ValidValues>
+      <MultiValue>true</MultiValue>
+    </ReportParameter>
+    <ReportParameter Name="PayPeriodCode">
+      <DataType>String</DataType>
+      <DefaultValue>
+        <DataSetReference>
+          <DataSetName>paramPayPeriod</DataSetName>
+          <ValueField>PayPeriodCode</ValueField>
+        </DataSetReference>
+      </DefaultValue>
+      <Prompt>Pay Period</Prompt>
+      <ValidValues>
+        <DataSetReference>
+          <DataSetName>paramPayPeriod</DataSetName>
+          <ValueField>PayPeriodCode</ValueField>
+          <LabelField>PayPeriodDesc</LabelField>
+        </DataSetReference>
+      </ValidValues>
+      <MultiValue>true</MultiValue>
+    </ReportParameter>
+    <ReportParameter Name="AccumulatorTypeCode">
+      <DataType>String</DataType>
+      <DefaultValue>
+        <Values>
+          <Value>P</Value>
+        </Values>
+      </DefaultValue>
+      <Prompt>Accumulator Type Code</Prompt>
+      <ValidValues>
+        <DataSetReference>
+          <DataSetName>paramAccumulatorType</DataSetName>
+          <ValueField>AccumulatorTypeCode</ValueField>
+          <LabelField>AccumulatorTypeDesc</LabelField>
+        </DataSetReference>
+      </ValidValues>
+    </ReportParameter>
+    <ReportParameter Name="AccumulatorCode">
+      <DataType>String</DataType>
+      <Prompt>Accumulator Code</Prompt>
+      <ValidValues>
+        <DataSetReference>
+          <DataSetName>paramAccumulatorDetail</DataSetName>
+          <ValueField>AccumulatorCode</ValueField>
+          <LabelField>AccumulatorDescription</LabelField>
+        </DataSetReference>
+      </ValidValues>
+      <MultiValue>true</MultiValue>
+    </ReportParameter>
+    <ReportParameter Name="PaySeq">
+      <DataType>String</DataType>
+      <DefaultValue>
+        <DataSetReference>
+          <DataSetName>paramPaySequence</DataSetName>
+          <ValueField>PaySequence</ValueField>
+        </DataSetReference>
+      </DefaultValue>
+      <Prompt>Pay Seq</Prompt>
+      <ValidValues>
+        <DataSetReference>
+          <DataSetName>paramPaySequence</DataSetName>
+          <ValueField>PaySequence</ValueField>
+          <LabelField>Description</LabelField>
+        </DataSetReference>
+      </ValidValues>
+      <MultiValue>true</MultiValue>
+    </ReportParameter>
+    <ReportParameter Name="JobCostHours">
+      <DataType>String</DataType>
+      <DefaultValue>
+        <Values>
+          <Value>JOBHOUR</Value>
+        </Values>
+      </DefaultValue>
+      <Prompt>Job Cost Hours</Prompt>
+      <ValidValues>
+        <DataSetReference>
+          <DataSetName>paramAllowanceGroup</DataSetName>
+          <ValueField>GroupCode</ValueField>
+          <LabelField>GroupDesc</LabelField>
+        </DataSetReference>
+      </ValidValues>
+    </ReportParameter>
+    <ReportParameter Name="JobCostAllow">
+      <DataType>String</DataType>
+      <DefaultValue>
+        <Values>
+          <Value>JOBALLW</Value>
+        </Values>
+      </DefaultValue>
+      <Prompt>Job Cost Allow</Prompt>
+      <ValidValues>
+        <DataSetReference>
+          <DataSetName>paramAllowanceGroup</DataSetName>
+          <ValueField>GroupCode</ValueField>
+          <LabelField>GroupDesc</LabelField>
+        </DataSetReference>
+      </ValidValues>
+    </ReportParameter>
+    <ReportParameter Name="PaySeqDesc">
+      <DataType>String</DataType>
+      <DefaultValue>
+        <DataSetReference>
+          <DataSetName>paramPaySeqDesc</DataSetName>
+          <ValueField>PaySeqDesc</ValueField>
+        </DataSetReference>
+      </DefaultValue>
+      <Prompt>Pay Sequence Desc</Prompt>
+      <Hidden>true</Hidden>
+      <ValidValues>
+        <DataSetReference>
+          <DataSetName>paramPaySeqDesc</DataSetName>
+          <ValueField>PaySeqDesc</ValueField>
+          <LabelField>PaySeqDesc</LabelField>
+        </DataSetReference>
+      </ValidValues>
+    </ReportParameter>
+  </ReportParameters>
+  <ReportParametersLayout>
+    <GridLayoutDefinition>
+      <NumberOfColumns>2</NumberOfColumns>
+      <NumberOfRows>5</NumberOfRows>
+      <CellDefinitions>
+        <CellDefinition>
+          <ColumnIndex>0</ColumnIndex>
+          <RowIndex>0</RowIndex>
+          <ParameterName>ShowSuper</ParameterName>
+        </CellDefinition>
+        <CellDefinition>
+          <ColumnIndex>0</ColumnIndex>
+          <RowIndex>1</RowIndex>
+          <ParameterName>CompanyCode</ParameterName>
+        </CellDefinition>
+        <CellDefinition>
+          <ColumnIndex>1</ColumnIndex>
+          <RowIndex>1</RowIndex>
+          <ParameterName>PayPeriodCode</ParameterName>
+        </CellDefinition>
+        <CellDefinition>
+          <ColumnIndex>0</ColumnIndex>
+          <RowIndex>2</RowIndex>
+          <ParameterName>AccumulatorTypeCode</ParameterName>
+        </CellDefinition>
+        <CellDefinition>
+          <ColumnIndex>1</ColumnIndex>
+          <RowIndex>2</RowIndex>
+          <ParameterName>AccumulatorCode</ParameterName>
+        </CellDefinition>
+        <CellDefinition>
+          <ColumnIndex>0</ColumnIndex>
+          <RowIndex>3</RowIndex>
+          <ParameterName>PaySeq</ParameterName>
+        </CellDefinition>
+        <CellDefinition>
+          <ColumnIndex>1</ColumnIndex>
+          <RowIndex>3</RowIndex>
+          <ParameterName>JobCostHours</ParameterName>
+        </CellDefinition>
+        <CellDefinition>
+          <ColumnIndex>0</ColumnIndex>
+          <RowIndex>4</RowIndex>
+          <ParameterName>JobCostAllow</ParameterName>
+        </CellDefinition>
+        <CellDefinition>
+          <ColumnIndex>1</ColumnIndex>
+          <RowIndex>4</RowIndex>
+          <ParameterName>PaySeqDesc</ParameterName>
+        </CellDefinition>
+      </CellDefinitions>
+    </GridLayoutDefinition>
+  </ReportParametersLayout>
+  <Language>en-AU</Language>
+  <rd:ReportUnitType>Cm</rd:ReportUnitType>
+  <rd:ReportID>9df43ed0-505a-4fa0-83f8-80c25beb3597</rd:ReportID>
+</Report>

@@ -1,0 +1,1973 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Report xmlns:rd="http://schemas.microsoft.com/SQLServer/reporting/reportdesigner" xmlns:cl="http://schemas.microsoft.com/sqlserver/reporting/2010/01/componentdefinition" xmlns="http://schemas.microsoft.com/sqlserver/reporting/2010/01/reportdefinition">
+  <AutoRefresh>0</AutoRefresh>
+  <DataSources>
+    <DataSource Name="PayGlobal">
+      <DataSourceReference>PayGlobal</DataSourceReference>
+      <rd:SecurityType>None</rd:SecurityType>
+      <rd:DataSourceID>dfbd5065-504a-490a-bdde-a41494bdd648</rd:DataSourceID>
+    </DataSource>
+  </DataSources>
+  <DataSets>
+    <DataSet Name="dsMainReportData">
+      <Query>
+        <DataSourceName>PayGlobal</DataSourceName>
+        <QueryParameters>
+          <QueryParameter Name="@IsWageAccrual">
+            <Value>=Parameters!IsWageAccrual.Value</Value>
+          </QueryParameter>
+          <QueryParameter Name="@AllowanceGroupFilter">
+            <Value>=Parameters!AllowanceGroupFilter.Value</Value>
+          </QueryParameter>
+          <QueryParameter Name="@PaySequence">
+            <Value>=Parameters!PaySequence.Value</Value>
+          </QueryParameter>
+          <QueryParameter Name="@NullGlCode">
+            <Value>=Parameters!NullGlCode.Value</Value>
+          </QueryParameter>
+        </QueryParameters>
+        <CommandText>
+DECLARE     @DefaultClearingAccCode		varchar(12) 
+           ,@DefaultClearingAccDesc		varchar(50) 
+           ,@DcrdClearingAccCode		varchar(12)	
+           ,@DcrdClearingAccDesc		varchar(50)
+           ,@ChqClearingAccCode		    varchar(12)	
+           ,@ChqClearingAccDesc		    varchar(50)
+           ,@CashClearingAccCode		varchar(12)	
+           ,@CashClearingAccDesc		varchar(50)
+           ,@PayeClearingAccCode		varchar(12)	
+           ,@PayeClearingAccDesc		varchar(50)
+           ,@EpClearingAccCode		    varchar(12)	
+           ,@EpClearingAccDesc		    varchar(50)
+           ,@TcdClearingAccCode		    varchar(12)	
+           ,@TcdClearingAccDesc		    varchar(50)
+           ;
+
+SET @DefaultClearingAccCode = '46810000';
+SET @DefaultClearingAccDesc = 'Accrual &lt;1yr- Payroll';
+
+SET @DcrdClearingAccCode  = (CASE WHEN @IsWageAccrual = 0 THEN (SELECT GeneralLedgerCode FROM Deduction WHERE DeductionCode = 'DCRD') ELSE @DefaultClearingAccCode END);
+SET @DcrdClearingAccDesc  = (CASE WHEN @IsWageAccrual = 0 THEN (SELECT GeneralLedgerDesc FROM Deduction WHERE DeductionCode = 'DCRD') ELSE @DefaultClearingAccDesc END);
+
+SET @ChqClearingAccCode   = (CASE WHEN @IsWageAccrual = 0 THEN (SELECT GeneralLedgerCode FROM Deduction WHERE DeductionCode = 'CHQ')  ELSE @DefaultClearingAccCode END);
+SET @ChqClearingAccDesc   = (CASE WHEN @IsWageAccrual = 0 THEN (SELECT GeneralLedgerDesc FROM Deduction WHERE DeductionCode = 'CHQ')  ELSE @DefaultClearingAccDesc END);
+
+SET @CashClearingAccCode  = (CASE WHEN @IsWageAccrual = 0 THEN (SELECT GeneralLedgerCode FROM Deduction WHERE DeductionCode = 'CASH') ELSE @DefaultClearingAccCode END);
+SET @CashClearingAccDesc  = (CASE WHEN @IsWageAccrual = 0 THEN (SELECT GeneralLedgerDesc FROM Deduction WHERE DeductionCode = 'CASH') ELSE @DefaultClearingAccDesc END);
+
+SET @PayeClearingAccCode  = (CASE WHEN @IsWageAccrual = 0 THEN (SELECT GeneralLedgerCode FROM Deduction WHERE DeductionCode = 'PAYE') ELSE @DefaultClearingAccCode END);
+SET @PayeClearingAccDesc  = (CASE WHEN @IsWageAccrual = 0 THEN (SELECT GeneralLedgerDesc FROM Deduction WHERE DeductionCode = 'PAYE') ELSE @DefaultClearingAccDesc END);
+
+SET @EpClearingAccCode    = (CASE WHEN @IsWageAccrual = 0 THEN (SELECT GeneralLedgerCode FROM Deduction WHERE DeductionCode = 'EP')   ELSE @DefaultClearingAccCode END);
+SET @EpClearingAccDesc    = (CASE WHEN @IsWageAccrual = 0 THEN (SELECT GeneralLedgerDesc FROM Deduction WHERE DeductionCode = 'EP')   ELSE @DefaultClearingAccDesc END);
+
+SET @TcdClearingAccCode   = (CASE WHEN @IsWageAccrual = 0 THEN (SELECT GeneralLedgerCode FROM Deduction WHERE DeductionCode = 'TAXCREDITDON') ELSE @DefaultClearingAccCode END);
+SET @TcdClearingAccDesc   = (CASE WHEN @IsWageAccrual = 0 THEN (SELECT GeneralLedgerDesc FROM Deduction WHERE DeductionCode = 'TAXCREDITDON') ELSE @DefaultClearingAccDesc END);
+
+
+
+WITH Allowances AS(
+    SELECT
+	      ha.HistoricalAllowanceID                  as id 
+	    , ha.EmployeeCode                           as EmployeeCode
+	    , ha.PaySequence                            as PaySequence
+	    , CASE 
+	        WHEN @IsWageAccrual = 1 
+	         AND ISNULL(aga.AllowanceGroupCode, '') = '' 
+	         AND cc.GeneralLedgerCode &lt;&gt; '0000' 
+	          THEN @DefaultClearingAccCode
+		  ELSE cc.GeneralLedgerCode
+		  END                                       as GeneralLedgerCode
+	    , CASE WHEN @IsWageAccrual = 1 
+	            AND ISNULL(aga.AllowanceGroupCode, '') = '' 
+	            AND cc.GeneralLedgerCode &lt;&gt; '0000'          
+	             THEN @DefaultClearingAccDesc
+		  ELSE cc.GeneralLedgerDesc
+		  END                                       as GeneralLedgerDesc
+		, cc.DepartmentCode                         as DepartmentCode
+		, cc.LocationCode                           as LocationCode
+	    , CASE 
+	        WHEN (a.Paying = 1)                             
+	          THEN 'Allowances'   
+	        WHEN (a.Paying = 0 OR LEFT(a.Type, 1) = 'Z')    
+	          THEN 'Non-Paying Allowances'             
+	      ELSE 'OTHER'
+	      END                                       as SourceType
+	    ,'Debit'                                    as DebitCredit
+	    , ISNULL(ha.TotalAmount, 0)                 as Amount
+    FROM HistoricalAllowance     as ha
+    JOIN Allowance               as a   ON a.AllowanceCode = ha.AllowanceCode
+	LEFT JOIN AllowanceGroupAllowance as aga ON a.AllowanceCode = aga.AllowanceCode AND aga.AllowanceGroupCode = @AllowanceGroupFilter
+	JOIN CostCentre              as cc  ON cc.CostCentreCode = ha.CostCentreCode
+    WHERE ha.PaySequence IN ( @PaySequence ) 
+	),
+    
+ContraAllowances AS(
+    SELECT
+	      ha.HistoricalAllowanceID           as id 
+	    , ha.EmployeeCode
+	    , ha.PaySequence
+	    , CASE 
+	        WHEN @IsWageAccrual = 1 
+	         AND ISNULL(aga.AllowanceGroupCode, '') = '' 
+	         AND cc.GeneralLedgerCode &lt;&gt; '0000' 
+	           THEN @DefaultClearingAccCode
+		  WHEN a.GeneralLedgerCode = '77520000' Then Left(ha.CostCentreCode,10) + ' ' + a.generalLedgerCode ELSE a.GeneralLedgerCode
+		  END                                       as GeneralLedgerCode
+	    , CASE 
+	        WHEN @IsWageAccrual = 1 
+	         AND ISNULL(aga.AllowanceGroupCode, '') = '' 
+	         AND cc.GeneralLedgerCode &lt;&gt; '0000' 
+	        THEN @DefaultClearingAccDesc
+		  ELSE a.GeneralLedgerDesc
+		  END                                       as GeneralLedgerDesc
+		, cc.DepartmentCode
+		, cc.LocationCode  
+	    , CASE  
+	        WHEN (a.Paying = 0 OR LEFT(a.Type, 1) = 'Z')     
+	        THEN 'Contra Allowances'           
+	      ELSE 'OTHER'
+	      END                                        as SourceType
+	    ,'Credit'                                    as DebitCredit
+	    , ISNULL(ha.TotalAmount, 0)  * -1            as Amount
+    FROM HistoricalAllowance    as ha
+    JOIN Allowance              as a   ON a.AllowanceCode = ha.AllowanceCode
+	LEFT JOIN AllowanceGroupAllowance as aga ON a.AllowanceCode = aga.AllowanceCode and aga.AllowanceGroupCode = @AllowanceGroupFilter
+	JOIN CostCentre             as cc  ON cc.CostCentreCode = ha.CostCentreCode
+    WHERE ha.PaySequence IN ( @PaySequence ) 
+      AND (a.Paying = 0 OR LEFT(a.Type, 1) = 'Z')
+    ),
+    
+cte_Deductions AS (
+    SELECT
+         hd.HistoricalDeductionID                   as id 
+        , hd.EmployeeCode
+	    , tps.PaySequence
+		, CASE WHEN @IsWageAccrual = 1 THEN @DefaultClearingAccCode
+		  WHEN d.GeneralLedgerCode = '77520000' Then (Select CostCentreCode from dbo.Employee where EmployeeCode = hd.EmployeeCode) + ' ' + d.GeneralLedgerCode ELSE d.GeneralLedgerCode END as GeneralLedgerCode
+		, CASE WHEN @IsWageAccrual = 1 THEN @DefaultClearingAccDesc
+		  ELSE d.GeneralLedgerDesc END	            as GeneralLedgerDesc
+		, NULL                                      as DepartmentCode
+		, NULL                                      as LocationCode
+	    , 'Deductions'                              as SourceType
+	    , ( hd.TotalAmount ) * ( -1 )               as Amount
+    FROM HistoricalDeduction as hd
+	JOIN Deduction			 as d	ON d.DeductionCode = hd.DeductionCode
+	JOIN TransPerPaySequence as tps	ON tps.PaySequence = hd.PaySequence
+	JOIN Employee			 as e	ON e.EmployeeCode = hd.EmployeeCode
+    WHERE tps.PaySequence IN ( @PaySequence ) 
+    ),
+    
+cte_DirectCreditData AS (
+    SELECT
+	    -1 as id
+	    , thm.EmployeeCode
+	    , tps.PaySequence
+	    , @DcrdClearingAccCode                      as GeneralLedgerCode
+	    , @DcrdClearingAccDesc                      as GeneralLedgerDesc
+		, NULL                                      as DepartmentCode
+		, NULL                                      as LocationCode
+		, 'Direct Credit'                           as SourceType
+		, SUM( thm.DCAmount ) * ( -1 )              as Amount
+    FROM
+	    TransHistoricalMaster thm
+	    INNER JOIN TransPerPaySequence tps ON tps.PaySequence = thm.PaySequence
+	    INNER JOIN Employee e ON e.EmployeeCode = thm.EmployeeCode
+    WHERE thm.PaySequence IN ( @PaySequence ) 
+    GROUP BY
+         tps.PaySequence, thm.EmployeeCode
+	    ),
+	
+cte_ChequeData AS (
+    SELECT
+	    -1 as id
+	    , thm.EmployeeCode
+	    , tps.PaySequence
+	    , @ChqClearingAccCode                       as GeneralLedgerCode
+	    , @ChqClearingAccDesc                       as GeneralLedgerDesc
+		, NULL                                      as DepartmentCode
+		, NULL                                      as LocationCode
+	    , 'Cheque'                                  as SourceType
+	    , SUM( thm.ChqAmount ) * ( -1 )             as Amount
+    FROM
+	    TransHistoricalMaster thm
+	    INNER JOIN TransPerPaySequence tps ON tps.PaySequence = thm.PaySequence
+	    INNER JOIN Employee e ON e.EmployeeCode = thm.EmployeeCode
+    WHERE thm.PaySequence IN ( @PaySequence ) 
+    GROUP BY
+	    tps.PaySequence, thm.EmployeeCode
+	    ),
+	
+cte_CashData AS (
+    SELECT
+	    -1 as id
+	    , thm.EmployeeCode
+	    , tps.PaySequence
+	    , @CashClearingAccCode                      as GeneralLedgerCode
+	    , @CashClearingAccDesc                      as GeneralLedgerDesc
+	    , NULL                                      as DepartmentCode
+		, NULL                                      as LocationCode
+	    , 'Cash'                                    as SourceType
+	    , SUM( thm.CashAmount ) * ( -1 )            as Amount
+    FROM
+	    TransHistoricalMaster thm
+	    INNER JOIN TransPerPaySequence tps ON tps.PaySequence = thm.PaySequence
+	    INNER JOIN Employee e ON e.EmployeeCode = thm.EmployeeCode
+    WHERE thm.PaySequence IN ( @PaySequence ) 
+    GROUP BY
+	    tps.PaySequence, thm.EmployeeCode
+	    ),
+	
+cte_PAYE AS (  
+    SELECT
+	    -1 as id
+	    , thm.EmployeeCode
+	    , tps.PaySequence
+	    , @PayeClearingAccCode                      as GeneralLedgerCode
+	    , @PayeClearingAccDesc                      as GeneralLedgerDesc
+	    , NULL                                      as DepartmentCode
+		, NULL                                      as LocationCode
+		, 'PAYE'                                    as SourceType
+		, SUM( thm.PAYE ) * ( -1 )                  as Amount
+    FROM
+	    TransHistoricalMaster thm
+	    INNER JOIN TransPerPaySequence tps ON tps.PaySequence = thm.PaySequence
+	    INNER JOIN Employee e ON e.EmployeeCode = thm.EmployeeCode
+    WHERE thm.PaySequence IN ( @PaySequence ) 
+    GROUP BY
+	    tps.PaySequence, thm.EmployeeCode
+	    ),
+	
+cte_EPData AS (
+    SELECT
+	    -1 as id
+	    , thm.EmployeeCode
+	    , tps.PaySequence
+	    , @EpClearingAccCode                        as GeneralLedgerCode
+	    , @EpClearingAccDesc                        as GeneralLedgerDesc
+	    , NULL                                      as DepartmentCode
+		, NULL                                      as LocationCode
+		, 'EP'                                      as SourceType
+		, SUM( thm.EP ) * ( -1 )                    as Amount
+    FROM
+	    TransHistoricalMaster thm
+	    INNER JOIN TransPerPaySequence tps ON tps.PaySequence = thm.PaySequence
+	    INNER JOIN Employee e ON e.EmployeeCode = thm.EmployeeCode
+    WHERE thm.PaySequence IN ( @PaySequence ) 
+    GROUP BY
+	     tps.PaySequence, thm.EmployeeCode
+	    ),
+	
+cte_TaxCreditDonation AS (
+    SELECT
+	    -1 as id
+	    , thm.EmployeeCode
+	    , tps.PaySequence
+	    , @TcdClearingAccCode                       as GeneralLedgerCode
+	    , @TcdClearingAccDesc                       as GeneralLedgerDesc
+		, NULL                                      as DepartmentCode
+		, NULL                                      as LocationCode
+		, 'Tax Credit Donation'                     as SourceType
+		, SUM( thm.TaxCreditDonation )              as Amount
+    FROM
+	    TransHistoricalMaster thm
+	    INNER JOIN TransPerPaySequence tps ON tps.PaySequence = thm.PaySequence
+	    INNER JOIN Employee e ON e.EmployeeCode = thm.EmployeeCode
+    WHERE thm.PaySequence IN ( @PaySequence ) 
+    GROUP BY
+	    tps.PaySequence, thm.EmployeeCode
+	    ),
+	    
+cte_GLDataSet AS (
+    SELECT id, PaySequence, EmployeeCode, GeneralLedgerCode, GeneralLedgerDesc, DepartmentCode, LocationCode, SourceType, Amount FROM Allowances
+        UNION ALL 
+    SELECT id, PaySequence, EmployeeCode, GeneralLedgerCode, GeneralLedgerDesc, DepartmentCode, LocationCode, SourceType, Amount FROM ContraAllowances                                                                                                                                                           
+        UNION ALL 
+    SELECT id, PaySequence, EmployeeCode, GeneralLedgerCode, GeneralLedgerDesc, DepartmentCode, LocationCode, SourceType, Amount FROM cte_Deductions
+        UNION ALL 
+    SELECT id, PaySequence, EmployeeCode, GeneralLedgerCode, GeneralLedgerDesc, DepartmentCode, LocationCode, SourceType, Amount FROM cte_TaxCreditDonation
+        UNION ALL
+    SELECT id, PaySequence, EmployeeCode, GeneralLedgerCode, GeneralLedgerDesc, DepartmentCode, LocationCode, SourceType, Amount FROM cte_EPData
+        UNION ALL
+    SELECT id, PaySequence, EmployeeCode, GeneralLedgerCode, GeneralLedgerDesc, DepartmentCode, LocationCode, SourceType, Amount FROM cte_PAYE
+        UNION ALL
+    SELECT id, PaySequence, EmployeeCode, GeneralLedgerCode, GeneralLedgerDesc, DepartmentCode, LocationCode, SourceType, Amount FROM cte_DirectCreditData
+        UNION ALL
+    SELECT id, PaySequence, EmployeeCode, GeneralLedgerCode, GeneralLedgerDesc, DepartmentCode, LocationCode, SourceType, Amount FROM cte_ChequeData
+        UNION ALL
+    SELECT id, PaySequence, EmployeeCode, GeneralLedgerCode, GeneralLedgerDesc, DepartmentCode, LocationCode, SourceType, Amount FROM cte_CashData 
+	)	
+	
+SELECT
+	  s.id                                      as id
+	, s.PaySequence                             as PaySequence
+	, s.EmployeeCode                            as EmployeeCode
+	, tps.PayPeriodCode                         as PayPeriodCode
+	, tps.PeriodEnd                             as PayPeriodEnd
+	, CASE 
+	    WHEN @IsWageAccrual = 1 AND ISNULL(s.GeneralLedgerCode, @NullGlCode) = '46320000' THEN @DefaultClearingAccCode
+	    WHEN @IsWageAccrual = 1 AND RIGHT(ISNULL(s.GeneralLedgerCode, @NullGlCode), 8) = '71010010' THEN REPLACE(s.GeneralLedgerCode, '71010010', '71010000')
+	    ELSE ISNULL(s.GeneralLedgerCode, @NullGlCode) 
+	  END                                       as GeneralLedgerCode
+	--, RIGHT(ISNULL(s.GeneralLedgerCode, @NullGlCode),8)  as GLCode
+	--, LEFT(ISNULL(s.GeneralLedgerCode, @NullGlCode), 10)  as CCCode
+	
+	-- @DefaultClearingAccDesc
+	, CASE 
+	    WHEN @IsWageAccrual = 1 AND ISNULL(s.GeneralLedgerCode, @NullGlCode) = '46320000' THEN @DefaultClearingAccDesc
+	    WHEN @IsWageAccrual = 1 AND RIGHT(ISNULL(s.GeneralLedgerCode, @NullGlCode), 8) = '71010010' THEN 'Basic Salaries'
+	    ELSE s.GeneralLedgerDesc
+	  END                                       as GeneralLedgerDesc
+	, s.Amount                                  as Amount
+	, tps.[Description]                         as PaySequenceDescription
+	, SourceType                                as SourceType
+FROM cte_GLDataSet           as s 
+JOIN TransPerPaySequence     as tps ON s.PaySequence = tps.PaySequence
+WHERE Amount &lt;&gt; 0
+  AND GeneralLedgerCode &lt;&gt; '0000'</CommandText>
+        <rd:UseGenericDesigner>true</rd:UseGenericDesigner>
+      </Query>
+      <Fields>
+        <Field Name="id">
+          <DataField>id</DataField>
+          <rd:TypeName>System.Int32</rd:TypeName>
+        </Field>
+        <Field Name="PaySequence">
+          <DataField>PaySequence</DataField>
+          <rd:TypeName>System.Int32</rd:TypeName>
+        </Field>
+        <Field Name="EmployeeCode">
+          <DataField>EmployeeCode</DataField>
+          <rd:TypeName>System.String</rd:TypeName>
+        </Field>
+        <Field Name="PayPeriodCode">
+          <DataField>PayPeriodCode</DataField>
+          <rd:TypeName>System.String</rd:TypeName>
+        </Field>
+        <Field Name="PayPeriodEnd">
+          <DataField>PayPeriodEnd</DataField>
+          <rd:TypeName>System.DateTime</rd:TypeName>
+        </Field>
+        <Field Name="GeneralLedgerCode">
+          <DataField>GeneralLedgerCode</DataField>
+          <rd:TypeName>System.String</rd:TypeName>
+        </Field>
+        <Field Name="GeneralLedgerDesc">
+          <DataField>GeneralLedgerDesc</DataField>
+          <rd:TypeName>System.String</rd:TypeName>
+        </Field>
+        <Field Name="Amount">
+          <DataField>Amount</DataField>
+          <rd:TypeName>System.Decimal</rd:TypeName>
+        </Field>
+        <Field Name="PaySequenceDescription">
+          <DataField>PaySequenceDescription</DataField>
+          <rd:TypeName>System.String</rd:TypeName>
+        </Field>
+        <Field Name="SourceType">
+          <DataField>SourceType</DataField>
+          <rd:TypeName>System.String</rd:TypeName>
+        </Field>
+      </Fields>
+    </DataSet>
+    <DataSet Name="dsPaySequences">
+      <Query>
+        <DataSourceName>PayGlobal</DataSourceName>
+        <QueryParameters>
+          <QueryParameter Name="@PayPeriodCode">
+            <Value>=Parameters!PayPeriodCode.Value</Value>
+          </QueryParameter>
+          <QueryParameter Name="@YearMonthClosed">
+            <Value>=Parameters!YearMonthClosed.Value</Value>
+          </QueryParameter>
+        </QueryParameters>
+        <CommandText>SELECT   tpps.PaySequence
+        ,CAST(tpps.PaySequence as varchar(32)) + ': ' + tpps.[Description] as PaySequenceDescription
+		,tpps.PayPeriodCode
+		,tpps.PeriodStart
+		,tpps.PeriodEnd
+FROM TransPerPaySequence as tpps
+WHERE Closed = 1 
+  AND Convert(char(7), tpps.DateClosed, 126) IN (@YearMonthClosed)
+  AND tpps.PayPeriodCode  IN (@PayPeriodCode)
+ORDER BY PaySequence Desc</CommandText>
+        <rd:UseGenericDesigner>true</rd:UseGenericDesigner>
+      </Query>
+      <Fields>
+        <Field Name="PaySequence">
+          <DataField>PaySequence</DataField>
+          <rd:TypeName>System.Int32</rd:TypeName>
+        </Field>
+        <Field Name="PaySequenceDescription">
+          <DataField>PaySequenceDescription</DataField>
+          <rd:TypeName>System.String</rd:TypeName>
+        </Field>
+        <Field Name="PayPeriodCode">
+          <DataField>PayPeriodCode</DataField>
+          <rd:TypeName>System.String</rd:TypeName>
+        </Field>
+        <Field Name="PeriodStart">
+          <DataField>PeriodStart</DataField>
+          <rd:TypeName>System.DateTime</rd:TypeName>
+        </Field>
+        <Field Name="PeriodEnd">
+          <DataField>PeriodEnd</DataField>
+          <rd:TypeName>System.DateTime</rd:TypeName>
+        </Field>
+      </Fields>
+    </DataSet>
+    <DataSet Name="dsPayPeriods">
+      <Query>
+        <DataSourceName>PayGlobal</DataSourceName>
+        <CommandText>SELECT        PayPeriodCode, PayPeriodCode + ' ' + Description AS PayPeriodDescription
+FROM            PayPeriod AS p
+ORDER BY PayPeriodDescription</CommandText>
+        <rd:UseGenericDesigner>true</rd:UseGenericDesigner>
+      </Query>
+      <Fields>
+        <Field Name="PayPeriodCode">
+          <DataField>PayPeriodCode</DataField>
+          <rd:TypeName>System.String</rd:TypeName>
+        </Field>
+        <Field Name="PayPeriodDescription">
+          <DataField>PayPeriodDescription</DataField>
+          <rd:TypeName>System.String</rd:TypeName>
+        </Field>
+      </Fields>
+    </DataSet>
+    <DataSet Name="dsCalendarMonths">
+      <Query>
+        <DataSourceName>PayGlobal</DataSourceName>
+        <QueryParameters>
+          <QueryParameter Name="@ReportIsScheduled">
+            <Value>=Parameters!ReportIsScheduled.Value</Value>
+          </QueryParameter>
+        </QueryParameters>
+        <CommandText>SELECT  DISTINCT Convert(char(7), DateClosed, 126) as YearMonthClosed 
+       ,CAST(DATENAME(Month, DateClosed) as char(3)) + ' ' + DATENAME(YEAR, DateClosed) as YearMonthClosedDescription
+FROM TransPerPaySequence
+WHERE DateClosed BETWEEN DATEADD(MONTH, -1, GETDATE()) and GETDATE()
+  AND ( @ReportIsScheduled = 0 OR Convert(char(7), DateClosed, 126) = CONVERT(char(7), DATEADD(MONTH, -1, GETDATE()), 126) )
+  Group by DateClosed
+ORDER BY YearMonthClosed DESC</CommandText>
+      </Query>
+      <Fields>
+        <Field Name="YearMonthClosed">
+          <DataField>YearMonthClosed</DataField>
+          <rd:TypeName>System.String</rd:TypeName>
+        </Field>
+        <Field Name="YearMonthClosedDescription">
+          <DataField>YearMonthClosedDescription</DataField>
+          <rd:TypeName>System.String</rd:TypeName>
+        </Field>
+      </Fields>
+    </DataSet>
+  </DataSets>
+  <ReportSections>
+    <ReportSection>
+      <Body>
+        <ReportItems>
+          <Tablix Name="table1">
+            <TablixBody>
+              <TablixColumns>
+                <TablixColumn>
+                  <Width>1cm</Width>
+                </TablixColumn>
+                <TablixColumn>
+                  <Width>1cm</Width>
+                </TablixColumn>
+                <TablixColumn>
+                  <Width>1cm</Width>
+                </TablixColumn>
+                <TablixColumn>
+                  <Width>2cm</Width>
+                </TablixColumn>
+                <TablixColumn>
+                  <Width>1.5cm</Width>
+                </TablixColumn>
+                <TablixColumn>
+                  <Width>1cm</Width>
+                </TablixColumn>
+                <TablixColumn>
+                  <Width>1cm</Width>
+                </TablixColumn>
+                <TablixColumn>
+                  <Width>2cm</Width>
+                </TablixColumn>
+                <TablixColumn>
+                  <Width>1.25cm</Width>
+                </TablixColumn>
+                <TablixColumn>
+                  <Width>2cm</Width>
+                </TablixColumn>
+                <TablixColumn>
+                  <Width>1.25cm</Width>
+                </TablixColumn>
+                <TablixColumn>
+                  <Width>1.25cm</Width>
+                </TablixColumn>
+                <TablixColumn>
+                  <Width>2.5cm</Width>
+                </TablixColumn>
+                <TablixColumn>
+                  <Width>2.5cm</Width>
+                </TablixColumn>
+                <TablixColumn>
+                  <Width>5.5cm</Width>
+                </TablixColumn>
+              </TablixColumns>
+              <TablixRows>
+                <TablixRow>
+                  <Height>0.9cm</Height>
+                  <TablixCells>
+                    <TablixCell>
+                      <CellContents>
+                        <Textbox Name="lblHeader1">
+                          <CanGrow>true</CanGrow>
+                          <Paragraphs>
+                            <Paragraph>
+                              <TextRuns>
+                                <TextRun>
+                                  <Value>New</Value>
+                                  <Style>
+                                    <FontSize>8pt</FontSize>
+                                    <Color>DimGray</Color>
+                                  </Style>
+                                </TextRun>
+                              </TextRuns>
+                              <Style>
+                                <TextAlign>Left</TextAlign>
+                              </Style>
+                            </Paragraph>
+                          </Paragraphs>
+                          <Style>
+                            <Border>
+                              <Color>LightGrey</Color>
+                              <Style>None</Style>
+                            </Border>
+                            <PaddingLeft>2pt</PaddingLeft>
+                            <PaddingRight>2pt</PaddingRight>
+                            <PaddingTop>2pt</PaddingTop>
+                            <PaddingBottom>2pt</PaddingBottom>
+                          </Style>
+                        </Textbox>
+                      </CellContents>
+                    </TablixCell>
+                    <TablixCell>
+                      <CellContents>
+                        <Textbox Name="lblHeader2">
+                          <CanGrow>true</CanGrow>
+                          <Paragraphs>
+                            <Paragraph>
+                              <TextRuns>
+                                <TextRun>
+                                  <Value EvaluationMode="Constant">Payroll</Value>
+                                  <Style>
+                                    <FontSize>8pt</FontSize>
+                                    <Color>DimGray</Color>
+                                  </Style>
+                                </TextRun>
+                              </TextRuns>
+                              <Style>
+                                <TextAlign>Left</TextAlign>
+                              </Style>
+                            </Paragraph>
+                          </Paragraphs>
+                          <Style>
+                            <Border>
+                              <Color>LightGrey</Color>
+                              <Style>None</Style>
+                            </Border>
+                            <PaddingLeft>2pt</PaddingLeft>
+                            <PaddingRight>2pt</PaddingRight>
+                            <PaddingTop>2pt</PaddingTop>
+                            <PaddingBottom>2pt</PaddingBottom>
+                          </Style>
+                        </Textbox>
+                      </CellContents>
+                    </TablixCell>
+                    <TablixCell>
+                      <CellContents>
+                        <Textbox Name="lblHeader3">
+                          <CanGrow>true</CanGrow>
+                          <Paragraphs>
+                            <Paragraph>
+                              <TextRuns>
+                                <TextRun>
+                                  <Value EvaluationMode="Constant">Import</Value>
+                                  <Style>
+                                    <FontSize>8pt</FontSize>
+                                    <Color>DimGray</Color>
+                                  </Style>
+                                </TextRun>
+                              </TextRuns>
+                              <Style>
+                                <TextAlign>Left</TextAlign>
+                              </Style>
+                            </Paragraph>
+                          </Paragraphs>
+                          <Style>
+                            <Border>
+                              <Color>LightGrey</Color>
+                              <Style>None</Style>
+                            </Border>
+                            <PaddingLeft>2pt</PaddingLeft>
+                            <PaddingRight>2pt</PaddingRight>
+                            <PaddingTop>2pt</PaddingTop>
+                            <PaddingBottom>2pt</PaddingBottom>
+                          </Style>
+                        </Textbox>
+                      </CellContents>
+                    </TablixCell>
+                    <TablixCell>
+                      <CellContents>
+                        <Textbox Name="lblHeader4">
+                          <CanGrow>true</CanGrow>
+                          <Paragraphs>
+                            <Paragraph>
+                              <TextRuns>
+                                <TextRun>
+                                  <Value>Date</Value>
+                                  <Style>
+                                    <FontSize>8pt</FontSize>
+                                    <Color>DimGray</Color>
+                                  </Style>
+                                </TextRun>
+                              </TextRuns>
+                              <Style>
+                                <TextAlign>Left</TextAlign>
+                              </Style>
+                            </Paragraph>
+                          </Paragraphs>
+                          <Style>
+                            <Border>
+                              <Color>LightGrey</Color>
+                              <Style>None</Style>
+                            </Border>
+                            <PaddingLeft>2pt</PaddingLeft>
+                            <PaddingRight>2pt</PaddingRight>
+                            <PaddingTop>2pt</PaddingTop>
+                            <PaddingBottom>2pt</PaddingBottom>
+                          </Style>
+                        </Textbox>
+                      </CellContents>
+                    </TablixCell>
+                    <TablixCell>
+                      <CellContents>
+                        <Textbox Name="Textbox6">
+                          <CanGrow>true</CanGrow>
+                          <Paragraphs>
+                            <Paragraph>
+                              <TextRuns>
+                                <TextRun>
+                                  <Value>Currency Code</Value>
+                                  <Style>
+                                    <FontSize>8pt</FontSize>
+                                    <Color>DimGray</Color>
+                                  </Style>
+                                </TextRun>
+                              </TextRuns>
+                              <Style>
+                                <TextAlign>Left</TextAlign>
+                              </Style>
+                            </Paragraph>
+                          </Paragraphs>
+                          <rd:DefaultName>Textbox6</rd:DefaultName>
+                          <Style>
+                            <Border>
+                              <Color>LightGrey</Color>
+                              <Style>None</Style>
+                            </Border>
+                            <PaddingLeft>2pt</PaddingLeft>
+                            <PaddingRight>2pt</PaddingRight>
+                            <PaddingTop>2pt</PaddingTop>
+                            <PaddingBottom>2pt</PaddingBottom>
+                          </Style>
+                        </Textbox>
+                      </CellContents>
+                    </TablixCell>
+                    <TablixCell>
+                      <CellContents>
+                        <Textbox Name="Textbox7">
+                          <CanGrow>true</CanGrow>
+                          <Paragraphs>
+                            <Paragraph>
+                              <TextRuns>
+                                <TextRun>
+                                  <Value EvaluationMode="Constant">Col 6</Value>
+                                  <Style>
+                                    <FontSize>8pt</FontSize>
+                                    <Color>DimGray</Color>
+                                  </Style>
+                                </TextRun>
+                              </TextRuns>
+                              <Style>
+                                <TextAlign>Left</TextAlign>
+                              </Style>
+                            </Paragraph>
+                          </Paragraphs>
+                          <rd:DefaultName>Textbox7</rd:DefaultName>
+                          <Style>
+                            <Border>
+                              <Color>LightGrey</Color>
+                              <Style>None</Style>
+                            </Border>
+                            <PaddingLeft>2pt</PaddingLeft>
+                            <PaddingRight>2pt</PaddingRight>
+                            <PaddingTop>2pt</PaddingTop>
+                            <PaddingBottom>2pt</PaddingBottom>
+                          </Style>
+                        </Textbox>
+                      </CellContents>
+                    </TablixCell>
+                    <TablixCell>
+                      <CellContents>
+                        <Textbox Name="lblHeader7">
+                          <CanGrow>true</CanGrow>
+                          <Paragraphs>
+                            <Paragraph>
+                              <TextRuns>
+                                <TextRun>
+                                  <Value EvaluationMode="Constant">Entity Code</Value>
+                                  <Style>
+                                    <FontSize>8pt</FontSize>
+                                    <Color>DimGray</Color>
+                                  </Style>
+                                </TextRun>
+                              </TextRuns>
+                              <Style>
+                                <TextAlign>Left</TextAlign>
+                              </Style>
+                            </Paragraph>
+                          </Paragraphs>
+                          <Style>
+                            <Border>
+                              <Color>LightGrey</Color>
+                              <Style>None</Style>
+                            </Border>
+                            <PaddingLeft>2pt</PaddingLeft>
+                            <PaddingRight>2pt</PaddingRight>
+                            <PaddingTop>2pt</PaddingTop>
+                            <PaddingBottom>2pt</PaddingBottom>
+                          </Style>
+                        </Textbox>
+                      </CellContents>
+                    </TablixCell>
+                    <TablixCell>
+                      <CellContents>
+                        <Textbox Name="lblHeader8">
+                          <CanGrow>true</CanGrow>
+                          <Paragraphs>
+                            <Paragraph>
+                              <TextRuns>
+                                <TextRun>
+                                  <Value EvaluationMode="Constant">GL Code</Value>
+                                  <Style>
+                                    <FontSize>8pt</FontSize>
+                                    <Color>DimGray</Color>
+                                  </Style>
+                                </TextRun>
+                              </TextRuns>
+                              <Style>
+                                <TextAlign>Left</TextAlign>
+                              </Style>
+                            </Paragraph>
+                          </Paragraphs>
+                          <Style>
+                            <Border>
+                              <Color>LightGrey</Color>
+                              <Style>None</Style>
+                            </Border>
+                            <PaddingLeft>2pt</PaddingLeft>
+                            <PaddingRight>2pt</PaddingRight>
+                            <PaddingTop>2pt</PaddingTop>
+                            <PaddingBottom>2pt</PaddingBottom>
+                          </Style>
+                        </Textbox>
+                      </CellContents>
+                    </TablixCell>
+                    <TablixCell>
+                      <CellContents>
+                        <Textbox Name="Textbox10">
+                          <CanGrow>true</CanGrow>
+                          <Paragraphs>
+                            <Paragraph>
+                              <TextRuns>
+                                <TextRun>
+                                  <Value EvaluationMode="Constant">Col 9</Value>
+                                  <Style>
+                                    <FontSize>8pt</FontSize>
+                                    <Color>DimGray</Color>
+                                  </Style>
+                                </TextRun>
+                              </TextRuns>
+                              <Style>
+                                <TextAlign>Left</TextAlign>
+                              </Style>
+                            </Paragraph>
+                          </Paragraphs>
+                          <rd:DefaultName>Textbox10</rd:DefaultName>
+                          <Style>
+                            <Border>
+                              <Color>LightGrey</Color>
+                              <Style>None</Style>
+                            </Border>
+                            <TopBorder>
+                              <Style>None</Style>
+                            </TopBorder>
+                            <BottomBorder>
+                              <Style>None</Style>
+                            </BottomBorder>
+                            <LeftBorder>
+                              <Style>None</Style>
+                            </LeftBorder>
+                            <RightBorder>
+                              <Style>None</Style>
+                            </RightBorder>
+                            <PaddingLeft>2pt</PaddingLeft>
+                            <PaddingRight>2pt</PaddingRight>
+                            <PaddingTop>2pt</PaddingTop>
+                            <PaddingBottom>2pt</PaddingBottom>
+                          </Style>
+                        </Textbox>
+                      </CellContents>
+                    </TablixCell>
+                    <TablixCell>
+                      <CellContents>
+                        <Textbox Name="Textbox26">
+                          <CanGrow>true</CanGrow>
+                          <KeepTogether>true</KeepTogether>
+                          <Paragraphs>
+                            <Paragraph>
+                              <TextRuns>
+                                <TextRun>
+                                  <Value>CC Code</Value>
+                                  <Style>
+                                    <FontSize>8pt</FontSize>
+                                    <Color>DimGray</Color>
+                                  </Style>
+                                </TextRun>
+                              </TextRuns>
+                              <Style>
+                                <TextAlign>Left</TextAlign>
+                              </Style>
+                            </Paragraph>
+                          </Paragraphs>
+                          <rd:DefaultName>Textbox26</rd:DefaultName>
+                          <Style>
+                            <Border>
+                              <Color>LightGrey</Color>
+                              <Style>None</Style>
+                            </Border>
+                            <TopBorder>
+                              <Style>None</Style>
+                            </TopBorder>
+                            <BottomBorder>
+                              <Style>None</Style>
+                            </BottomBorder>
+                            <LeftBorder>
+                              <Style>None</Style>
+                            </LeftBorder>
+                            <RightBorder>
+                              <Style>None</Style>
+                            </RightBorder>
+                            <PaddingLeft>2pt</PaddingLeft>
+                            <PaddingRight>2pt</PaddingRight>
+                            <PaddingTop>2pt</PaddingTop>
+                            <PaddingBottom>2pt</PaddingBottom>
+                          </Style>
+                        </Textbox>
+                      </CellContents>
+                    </TablixCell>
+                    <TablixCell>
+                      <CellContents>
+                        <Textbox Name="Textbox28">
+                          <CanGrow>true</CanGrow>
+                          <KeepTogether>true</KeepTogether>
+                          <Paragraphs>
+                            <Paragraph>
+                              <TextRuns>
+                                <TextRun>
+                                  <Value>Col 11</Value>
+                                  <Style>
+                                    <FontSize>8pt</FontSize>
+                                    <Color>DimGray</Color>
+                                  </Style>
+                                </TextRun>
+                              </TextRuns>
+                              <Style>
+                                <TextAlign>Left</TextAlign>
+                              </Style>
+                            </Paragraph>
+                          </Paragraphs>
+                          <rd:DefaultName>Textbox28</rd:DefaultName>
+                          <Style>
+                            <Border>
+                              <Color>LightGrey</Color>
+                              <Style>None</Style>
+                            </Border>
+                            <TopBorder>
+                              <Style>None</Style>
+                            </TopBorder>
+                            <BottomBorder>
+                              <Style>None</Style>
+                            </BottomBorder>
+                            <LeftBorder>
+                              <Style>None</Style>
+                            </LeftBorder>
+                            <RightBorder>
+                              <Style>None</Style>
+                            </RightBorder>
+                            <PaddingLeft>2pt</PaddingLeft>
+                            <PaddingRight>2pt</PaddingRight>
+                            <PaddingTop>2pt</PaddingTop>
+                            <PaddingBottom>2pt</PaddingBottom>
+                          </Style>
+                        </Textbox>
+                      </CellContents>
+                    </TablixCell>
+                    <TablixCell>
+                      <CellContents>
+                        <Textbox Name="lblHeader24">
+                          <CanGrow>true</CanGrow>
+                          <KeepTogether>true</KeepTogether>
+                          <Paragraphs>
+                            <Paragraph>
+                              <TextRuns>
+                                <TextRun>
+                                  <Value EvaluationMode="Constant">Col 12</Value>
+                                  <Style>
+                                    <FontSize>8pt</FontSize>
+                                    <Color>DimGray</Color>
+                                  </Style>
+                                </TextRun>
+                              </TextRuns>
+                              <Style>
+                                <TextAlign>Left</TextAlign>
+                              </Style>
+                            </Paragraph>
+                          </Paragraphs>
+                          <Style>
+                            <Border>
+                              <Color>LightGrey</Color>
+                              <Style>None</Style>
+                            </Border>
+                            <TopBorder>
+                              <Style>None</Style>
+                            </TopBorder>
+                            <BottomBorder>
+                              <Style>None</Style>
+                            </BottomBorder>
+                            <LeftBorder>
+                              <Style>None</Style>
+                            </LeftBorder>
+                            <RightBorder>
+                              <Style>None</Style>
+                            </RightBorder>
+                            <PaddingLeft>2pt</PaddingLeft>
+                            <PaddingRight>2pt</PaddingRight>
+                            <PaddingTop>2pt</PaddingTop>
+                            <PaddingBottom>2pt</PaddingBottom>
+                          </Style>
+                        </Textbox>
+                      </CellContents>
+                    </TablixCell>
+                    <TablixCell>
+                      <CellContents>
+                        <Textbox Name="Textbox30">
+                          <CanGrow>true</CanGrow>
+                          <KeepTogether>true</KeepTogether>
+                          <Paragraphs>
+                            <Paragraph>
+                              <TextRuns>
+                                <TextRun>
+                                  <Value>Debit</Value>
+                                  <Style>
+                                    <FontSize>8pt</FontSize>
+                                    <Color>DimGray</Color>
+                                  </Style>
+                                </TextRun>
+                              </TextRuns>
+                              <Style>
+                                <TextAlign>Right</TextAlign>
+                              </Style>
+                            </Paragraph>
+                          </Paragraphs>
+                          <rd:DefaultName>Textbox30</rd:DefaultName>
+                          <Style>
+                            <Border>
+                              <Color>LightGrey</Color>
+                              <Style>None</Style>
+                            </Border>
+                            <TopBorder>
+                              <Style>None</Style>
+                            </TopBorder>
+                            <BottomBorder>
+                              <Style>None</Style>
+                            </BottomBorder>
+                            <LeftBorder>
+                              <Style>None</Style>
+                            </LeftBorder>
+                            <RightBorder>
+                              <Style>None</Style>
+                            </RightBorder>
+                            <PaddingLeft>2pt</PaddingLeft>
+                            <PaddingRight>2pt</PaddingRight>
+                            <PaddingTop>2pt</PaddingTop>
+                            <PaddingBottom>2pt</PaddingBottom>
+                          </Style>
+                        </Textbox>
+                      </CellContents>
+                    </TablixCell>
+                    <TablixCell>
+                      <CellContents>
+                        <Textbox Name="Textbox32">
+                          <CanGrow>true</CanGrow>
+                          <KeepTogether>true</KeepTogether>
+                          <Paragraphs>
+                            <Paragraph>
+                              <TextRuns>
+                                <TextRun>
+                                  <Value>Credit</Value>
+                                  <Style>
+                                    <FontSize>8pt</FontSize>
+                                    <Color>DimGray</Color>
+                                  </Style>
+                                </TextRun>
+                              </TextRuns>
+                              <Style>
+                                <TextAlign>Right</TextAlign>
+                              </Style>
+                            </Paragraph>
+                          </Paragraphs>
+                          <rd:DefaultName>Textbox32</rd:DefaultName>
+                          <Style>
+                            <Border>
+                              <Color>LightGrey</Color>
+                              <Style>None</Style>
+                            </Border>
+                            <TopBorder>
+                              <Style>None</Style>
+                            </TopBorder>
+                            <BottomBorder>
+                              <Style>None</Style>
+                            </BottomBorder>
+                            <LeftBorder>
+                              <Style>None</Style>
+                            </LeftBorder>
+                            <RightBorder>
+                              <Style>None</Style>
+                            </RightBorder>
+                            <PaddingLeft>2pt</PaddingLeft>
+                            <PaddingRight>2pt</PaddingRight>
+                            <PaddingTop>2pt</PaddingTop>
+                            <PaddingBottom>2pt</PaddingBottom>
+                          </Style>
+                        </Textbox>
+                      </CellContents>
+                    </TablixCell>
+                    <TablixCell>
+                      <CellContents>
+                        <Textbox Name="Textbox44">
+                          <CanGrow>true</CanGrow>
+                          <KeepTogether>true</KeepTogether>
+                          <Paragraphs>
+                            <Paragraph>
+                              <TextRuns>
+                                <TextRun>
+                                  <Value>Description</Value>
+                                  <Style>
+                                    <FontSize>8pt</FontSize>
+                                    <Color>DimGray</Color>
+                                  </Style>
+                                </TextRun>
+                              </TextRuns>
+                              <Style>
+                                <TextAlign>Left</TextAlign>
+                              </Style>
+                            </Paragraph>
+                          </Paragraphs>
+                          <rd:DefaultName>Textbox44</rd:DefaultName>
+                          <Style>
+                            <Border>
+                              <Color>LightGrey</Color>
+                              <Style>None</Style>
+                            </Border>
+                            <TopBorder>
+                              <Style>None</Style>
+                            </TopBorder>
+                            <BottomBorder>
+                              <Style>None</Style>
+                            </BottomBorder>
+                            <LeftBorder>
+                              <Style>None</Style>
+                            </LeftBorder>
+                            <RightBorder>
+                              <Style>None</Style>
+                            </RightBorder>
+                            <PaddingLeft>2pt</PaddingLeft>
+                            <PaddingRight>2pt</PaddingRight>
+                            <PaddingTop>2pt</PaddingTop>
+                            <PaddingBottom>2pt</PaddingBottom>
+                          </Style>
+                        </Textbox>
+                      </CellContents>
+                    </TablixCell>
+                  </TablixCells>
+                </TablixRow>
+                <TablixRow>
+                  <Height>0.54cm</Height>
+                  <TablixCells>
+                    <TablixCell>
+                      <CellContents>
+                        <Textbox Name="Header1">
+                          <KeepTogether>true</KeepTogether>
+                          <Paragraphs>
+                            <Paragraph>
+                              <TextRuns>
+                                <TextRun>
+                                  <Value>="NEW"</Value>
+                                  <Style>
+                                    <FontSize>8pt</FontSize>
+                                  </Style>
+                                </TextRun>
+                              </TextRuns>
+                              <Style>
+                                <TextAlign>Left</TextAlign>
+                              </Style>
+                            </Paragraph>
+                          </Paragraphs>
+                          <Style>
+                            <Border>
+                              <Color>LightGrey</Color>
+                              <Style>None</Style>
+                            </Border>
+                            <PaddingLeft>2pt</PaddingLeft>
+                            <PaddingRight>2pt</PaddingRight>
+                            <PaddingTop>2pt</PaddingTop>
+                            <PaddingBottom>2pt</PaddingBottom>
+                          </Style>
+                        </Textbox>
+                      </CellContents>
+                    </TablixCell>
+                    <TablixCell>
+                      <CellContents>
+                        <Textbox Name="Header2">
+                          <KeepTogether>true</KeepTogether>
+                          <Paragraphs>
+                            <Paragraph>
+                              <TextRuns>
+                                <TextRun>
+                                  <Value>="Payroll"</Value>
+                                  <Style>
+                                    <FontSize>8pt</FontSize>
+                                    <Format>yyyy-MM-dd</Format>
+                                  </Style>
+                                </TextRun>
+                              </TextRuns>
+                              <Style>
+                                <TextAlign>Left</TextAlign>
+                              </Style>
+                            </Paragraph>
+                          </Paragraphs>
+                          <Style>
+                            <Border>
+                              <Color>LightGrey</Color>
+                              <Style>None</Style>
+                            </Border>
+                            <PaddingLeft>2pt</PaddingLeft>
+                            <PaddingRight>2pt</PaddingRight>
+                            <PaddingTop>2pt</PaddingTop>
+                            <PaddingBottom>2pt</PaddingBottom>
+                          </Style>
+                        </Textbox>
+                      </CellContents>
+                    </TablixCell>
+                    <TablixCell>
+                      <CellContents>
+                        <Textbox Name="Header3">
+                          <KeepTogether>true</KeepTogether>
+                          <Paragraphs>
+                            <Paragraph>
+                              <TextRuns>
+                                <TextRun>
+                                  <Value>="Import"</Value>
+                                  <Style>
+                                    <FontSize>8pt</FontSize>
+                                  </Style>
+                                </TextRun>
+                              </TextRuns>
+                              <Style>
+                                <TextAlign>Left</TextAlign>
+                              </Style>
+                            </Paragraph>
+                          </Paragraphs>
+                          <Style>
+                            <Border>
+                              <Color>LightGrey</Color>
+                              <Style>None</Style>
+                            </Border>
+                            <PaddingLeft>2pt</PaddingLeft>
+                            <PaddingRight>2pt</PaddingRight>
+                            <PaddingTop>2pt</PaddingTop>
+                            <PaddingBottom>2pt</PaddingBottom>
+                          </Style>
+                        </Textbox>
+                      </CellContents>
+                    </TablixCell>
+                    <TablixCell>
+                      <CellContents>
+                        <Textbox Name="ReportDate">
+                          <KeepTogether>true</KeepTogether>
+                          <Paragraphs>
+                            <Paragraph>
+                              <TextRuns>
+                                <TextRun>
+                                  <Value>=Format(Parameters!ImportFilePeriodDate.Value, "dd-MMM-yy")</Value>
+                                  <Style>
+                                    <FontSize>8pt</FontSize>
+                                    <Format>dd-MMM-yy</Format>
+                                  </Style>
+                                </TextRun>
+                              </TextRuns>
+                              <Style>
+                                <TextAlign>Left</TextAlign>
+                              </Style>
+                            </Paragraph>
+                          </Paragraphs>
+                          <Style>
+                            <Border>
+                              <Color>LightGrey</Color>
+                              <Style>None</Style>
+                            </Border>
+                            <PaddingLeft>2pt</PaddingLeft>
+                            <PaddingRight>2pt</PaddingRight>
+                            <PaddingTop>2pt</PaddingTop>
+                            <PaddingBottom>2pt</PaddingBottom>
+                          </Style>
+                        </Textbox>
+                      </CellContents>
+                    </TablixCell>
+                    <TablixCell>
+                      <CellContents>
+                        <Textbox Name="CurrencyCode">
+                          <KeepTogether>true</KeepTogether>
+                          <Paragraphs>
+                            <Paragraph>
+                              <TextRuns>
+                                <TextRun>
+                                  <Value>=Parameters!CurrencyCode.Value</Value>
+                                  <Style>
+                                    <FontSize>8pt</FontSize>
+                                  </Style>
+                                </TextRun>
+                              </TextRuns>
+                              <Style>
+                                <TextAlign>Left</TextAlign>
+                              </Style>
+                            </Paragraph>
+                          </Paragraphs>
+                          <Style>
+                            <Border>
+                              <Color>LightGrey</Color>
+                              <Style>None</Style>
+                            </Border>
+                            <PaddingLeft>2pt</PaddingLeft>
+                            <PaddingRight>2pt</PaddingRight>
+                            <PaddingTop>2pt</PaddingTop>
+                            <PaddingBottom>2pt</PaddingBottom>
+                          </Style>
+                        </Textbox>
+                      </CellContents>
+                    </TablixCell>
+                    <TablixCell>
+                      <CellContents>
+                        <Textbox Name="Header6">
+                          <KeepTogether>true</KeepTogether>
+                          <Paragraphs>
+                            <Paragraph>
+                              <TextRuns>
+                                <TextRun>
+                                  <Value>="A"</Value>
+                                  <Style>
+                                    <FontSize>8pt</FontSize>
+                                  </Style>
+                                </TextRun>
+                              </TextRuns>
+                              <Style>
+                                <TextAlign>Left</TextAlign>
+                              </Style>
+                            </Paragraph>
+                          </Paragraphs>
+                          <Style>
+                            <Border>
+                              <Color>LightGrey</Color>
+                              <Style>None</Style>
+                            </Border>
+                            <PaddingLeft>2pt</PaddingLeft>
+                            <PaddingRight>2pt</PaddingRight>
+                            <PaddingTop>2pt</PaddingTop>
+                            <PaddingBottom>2pt</PaddingBottom>
+                          </Style>
+                        </Textbox>
+                      </CellContents>
+                    </TablixCell>
+                    <TablixCell>
+                      <CellContents>
+                        <Textbox Name="EntityCode">
+                          <KeepTogether>true</KeepTogether>
+                          <Paragraphs>
+                            <Paragraph>
+                              <TextRuns>
+                                <TextRun>
+                                  <Value>="310"</Value>
+                                  <Style>
+                                    <FontSize>8pt</FontSize>
+                                  </Style>
+                                </TextRun>
+                              </TextRuns>
+                              <Style>
+                                <TextAlign>Left</TextAlign>
+                              </Style>
+                            </Paragraph>
+                          </Paragraphs>
+                          <Style>
+                            <Border>
+                              <Color>LightGrey</Color>
+                              <Style>None</Style>
+                            </Border>
+                            <PaddingLeft>2pt</PaddingLeft>
+                            <PaddingRight>2pt</PaddingRight>
+                            <PaddingTop>2pt</PaddingTop>
+                            <PaddingBottom>2pt</PaddingBottom>
+                          </Style>
+                        </Textbox>
+                      </CellContents>
+                    </TablixCell>
+                    <TablixCell>
+                      <CellContents>
+                        <Textbox Name="GeneralLedgerCode">
+                          <KeepTogether>true</KeepTogether>
+                          <Paragraphs>
+                            <Paragraph>
+                              <TextRuns>
+                                <TextRun>
+                                  <Value>=iif((Len(Fields!GeneralLedgerCode.Value) &gt; 10) And (Right(Fields!GeneralLedgerCode.Value,8) &lt;&gt; "46810080"), Left(Fields!GeneralLedgerCode.Value, 10), "")</Value>
+                                  <Style>
+                                    <FontSize>8pt</FontSize>
+                                  </Style>
+                                </TextRun>
+                              </TextRuns>
+                              <Style>
+                                <TextAlign>Left</TextAlign>
+                              </Style>
+                            </Paragraph>
+                          </Paragraphs>
+                          <rd:DefaultName>GeneralLedgerCode</rd:DefaultName>
+                          <Style>
+                            <Border>
+                              <Color>LightGrey</Color>
+                              <Style>None</Style>
+                            </Border>
+                            <PaddingLeft>2pt</PaddingLeft>
+                            <PaddingRight>2pt</PaddingRight>
+                            <PaddingTop>2pt</PaddingTop>
+                            <PaddingBottom>2pt</PaddingBottom>
+                          </Style>
+                        </Textbox>
+                      </CellContents>
+                    </TablixCell>
+                    <TablixCell>
+                      <CellContents>
+                        <Textbox Name="Header9">
+                          <KeepTogether>true</KeepTogether>
+                          <Paragraphs>
+                            <Paragraph>
+                              <TextRuns>
+                                <TextRun>
+                                  <Value>="000000"</Value>
+                                  <Style>
+                                    <FontSize>8pt</FontSize>
+                                  </Style>
+                                </TextRun>
+                              </TextRuns>
+                              <Style>
+                                <TextAlign>Left</TextAlign>
+                              </Style>
+                            </Paragraph>
+                          </Paragraphs>
+                          <Style>
+                            <Border>
+                              <Color>LightGrey</Color>
+                              <Style>None</Style>
+                            </Border>
+                            <PaddingLeft>2pt</PaddingLeft>
+                            <PaddingRight>2pt</PaddingRight>
+                            <PaddingTop>2pt</PaddingTop>
+                            <PaddingBottom>2pt</PaddingBottom>
+                          </Style>
+                        </Textbox>
+                      </CellContents>
+                    </TablixCell>
+                    <TablixCell>
+                      <CellContents>
+                        <Textbox Name="CostCentreCode">
+                          <KeepTogether>true</KeepTogether>
+                          <Paragraphs>
+                            <Paragraph>
+                              <TextRuns>
+                                <TextRun>
+                                  <Value>=Right(Fields!GeneralLedgerCode.Value, 8)</Value>
+                                  <Style>
+                                    <FontSize>8pt</FontSize>
+                                  </Style>
+                                </TextRun>
+                              </TextRuns>
+                              <Style>
+                                <TextAlign>Left</TextAlign>
+                              </Style>
+                            </Paragraph>
+                          </Paragraphs>
+                          <Style>
+                            <Border>
+                              <Color>LightGrey</Color>
+                              <Style>None</Style>
+                            </Border>
+                            <PaddingLeft>2pt</PaddingLeft>
+                            <PaddingRight>2pt</PaddingRight>
+                            <PaddingTop>2pt</PaddingTop>
+                            <PaddingBottom>2pt</PaddingBottom>
+                          </Style>
+                        </Textbox>
+                      </CellContents>
+                    </TablixCell>
+                    <TablixCell>
+                      <CellContents>
+                        <Textbox Name="Header11">
+                          <KeepTogether>true</KeepTogether>
+                          <Paragraphs>
+                            <Paragraph>
+                              <TextRuns>
+                                <TextRun>
+                                  <Value>="0000"</Value>
+                                  <Style>
+                                    <FontSize>8pt</FontSize>
+                                  </Style>
+                                </TextRun>
+                              </TextRuns>
+                              <Style>
+                                <TextAlign>Left</TextAlign>
+                              </Style>
+                            </Paragraph>
+                          </Paragraphs>
+                          <Style>
+                            <Border>
+                              <Color>LightGrey</Color>
+                              <Style>None</Style>
+                            </Border>
+                            <PaddingLeft>2pt</PaddingLeft>
+                            <PaddingRight>2pt</PaddingRight>
+                            <PaddingTop>2pt</PaddingTop>
+                            <PaddingBottom>2pt</PaddingBottom>
+                          </Style>
+                        </Textbox>
+                      </CellContents>
+                    </TablixCell>
+                    <TablixCell>
+                      <CellContents>
+                        <Textbox Name="Header12">
+                          <KeepTogether>true</KeepTogether>
+                          <Paragraphs>
+                            <Paragraph>
+                              <TextRuns>
+                                <TextRun>
+                                  <Value>="0000"</Value>
+                                  <Style>
+                                    <FontSize>8pt</FontSize>
+                                  </Style>
+                                </TextRun>
+                              </TextRuns>
+                              <Style>
+                                <TextAlign>Left</TextAlign>
+                              </Style>
+                            </Paragraph>
+                          </Paragraphs>
+                          <Style>
+                            <Border>
+                              <Color>LightGrey</Color>
+                              <Style>None</Style>
+                            </Border>
+                            <PaddingLeft>2pt</PaddingLeft>
+                            <PaddingRight>2pt</PaddingRight>
+                            <PaddingTop>2pt</PaddingTop>
+                            <PaddingBottom>2pt</PaddingBottom>
+                          </Style>
+                        </Textbox>
+                      </CellContents>
+                    </TablixCell>
+                    <TablixCell>
+                      <CellContents>
+                        <Textbox Name="Debit">
+                          <CanGrow>true</CanGrow>
+                          <KeepTogether>true</KeepTogether>
+                          <Paragraphs>
+                            <Paragraph>
+                              <TextRuns>
+                                <TextRun>
+                                  <Value>=Format(IIF(Sum(Fields!Amount.Value) &gt;= 0
+   , Sum(Fields!Amount.Value) * Code.AccrualFactor(IIF(IsNothing(Parameters!TotalDaysInGLPeriod.Value), -1, Parameters!TotalDaysInGLPeriod.Value)
+                                                 , IIF(IsNothing(Parameters!DaysToAccrue.Value), -1, Parameters!DaysToAccrue.Value)
+                                                 )
+                              * Parameters!IsReversal.Value                     
+   , 0), "0.00##;;0")</Value>
+                                  <Style>
+                                    <FontSize>8pt</FontSize>
+                                    <Format>0.00##;;0</Format>
+                                  </Style>
+                                </TextRun>
+                              </TextRuns>
+                              <Style>
+                                <TextAlign>Right</TextAlign>
+                              </Style>
+                            </Paragraph>
+                          </Paragraphs>
+                          <Style>
+                            <Border>
+                              <Color>LightGrey</Color>
+                              <Style>None</Style>
+                            </Border>
+                            <PaddingLeft>2pt</PaddingLeft>
+                            <PaddingRight>2pt</PaddingRight>
+                            <PaddingTop>2pt</PaddingTop>
+                            <PaddingBottom>2pt</PaddingBottom>
+                          </Style>
+                        </Textbox>
+                      </CellContents>
+                    </TablixCell>
+                    <TablixCell>
+                      <CellContents>
+                        <Textbox Name="Credit">
+                          <CanGrow>true</CanGrow>
+                          <KeepTogether>true</KeepTogether>
+                          <Paragraphs>
+                            <Paragraph>
+                              <TextRuns>
+                                <TextRun>
+                                  <Value>=Format(IIF(Sum(Fields!Amount.Value) &lt; 0
+   , Sum(Fields!Amount.Value) * -1 * Code.AccrualFactor(IIF(IsNothing(Parameters!TotalDaysInGLPeriod.Value), -1, Parameters!TotalDaysInGLPeriod.Value)
+                                                      , IIF(IsNothing(Parameters!DaysToAccrue.Value), -1, Parameters!DaysToAccrue.Value)
+                                                     )
+                                   * Parameters!IsReversal.Value  
+   , 0), "0.00##;;0")</Value>
+                                  <Style>
+                                    <FontSize>8pt</FontSize>
+                                    <Format>0.00##;;0</Format>
+                                  </Style>
+                                </TextRun>
+                              </TextRuns>
+                              <Style>
+                                <TextAlign>Right</TextAlign>
+                              </Style>
+                            </Paragraph>
+                          </Paragraphs>
+                          <Style>
+                            <Border>
+                              <Color>LightGrey</Color>
+                              <Style>None</Style>
+                            </Border>
+                            <PaddingLeft>2pt</PaddingLeft>
+                            <PaddingRight>2pt</PaddingRight>
+                            <PaddingTop>2pt</PaddingTop>
+                            <PaddingBottom>2pt</PaddingBottom>
+                          </Style>
+                        </Textbox>
+                      </CellContents>
+                    </TablixCell>
+                    <TablixCell>
+                      <CellContents>
+                        <Textbox Name="GeneralLedgerDesc">
+                          <KeepTogether>true</KeepTogether>
+                          <Paragraphs>
+                            <Paragraph>
+                              <TextRuns>
+                                <TextRun>
+                                  <Value>=Fields!GeneralLedgerDesc.Value</Value>
+                                  <Style>
+                                    <FontSize>8pt</FontSize>
+                                  </Style>
+                                </TextRun>
+                              </TextRuns>
+                              <Style>
+                                <TextAlign>Left</TextAlign>
+                              </Style>
+                            </Paragraph>
+                          </Paragraphs>
+                          <rd:DefaultName>GeneralLedgerDesc</rd:DefaultName>
+                          <Style>
+                            <Border>
+                              <Color>LightGrey</Color>
+                              <Style>None</Style>
+                            </Border>
+                            <PaddingLeft>2pt</PaddingLeft>
+                            <PaddingRight>2pt</PaddingRight>
+                            <PaddingTop>2pt</PaddingTop>
+                            <PaddingBottom>2pt</PaddingBottom>
+                          </Style>
+                        </Textbox>
+                      </CellContents>
+                    </TablixCell>
+                  </TablixCells>
+                </TablixRow>
+              </TablixRows>
+            </TablixBody>
+            <TablixColumnHierarchy>
+              <TablixMembers>
+                <TablixMember />
+                <TablixMember />
+                <TablixMember />
+                <TablixMember />
+                <TablixMember />
+                <TablixMember />
+                <TablixMember />
+                <TablixMember />
+                <TablixMember />
+                <TablixMember />
+                <TablixMember />
+                <TablixMember />
+                <TablixMember />
+                <TablixMember />
+                <TablixMember />
+              </TablixMembers>
+            </TablixColumnHierarchy>
+            <TablixRowHierarchy>
+              <TablixMembers>
+                <TablixMember>
+                  <KeepWithGroup>After</KeepWithGroup>
+                </TablixMember>
+                <TablixMember>
+                  <Group Name="table1_Details_Group">
+                    <GroupExpressions>
+                      <GroupExpression>=Fields!GeneralLedgerCode.Value</GroupExpression>
+                    </GroupExpressions>
+                    <Filters>
+                      <Filter>
+                        <FilterExpression>=Sum(Fields!Amount.Value, "table1_Details_Group")</FilterExpression>
+                        <Operator>NotEqual</Operator>
+                        <FilterValues>
+                          <FilterValue DataType="Integer">=0</FilterValue>
+                        </FilterValues>
+                      </Filter>
+                    </Filters>
+                    <DataElementName>Detail</DataElementName>
+                  </Group>
+                  <TablixMembers>
+                    <TablixMember />
+                  </TablixMembers>
+                  <DataElementName>Detail_Collection</DataElementName>
+                  <DataElementOutput>Output</DataElementOutput>
+                  <KeepTogether>true</KeepTogether>
+                </TablixMember>
+              </TablixMembers>
+            </TablixRowHierarchy>
+            <DataSetName>dsMainReportData</DataSetName>
+            <SortExpressions>
+              <SortExpression>
+                <Value>=Fields!GeneralLedgerCode.Value</Value>
+              </SortExpression>
+            </SortExpressions>
+            <Height>1.44cm</Height>
+            <Width>26.75cm</Width>
+            <Style />
+          </Tablix>
+        </ReportItems>
+        <Height>1.44cm</Height>
+        <Style />
+      </Body>
+      <Width>26.75cm</Width>
+      <Page>
+        <PageHeader>
+          <Height>0.75cm</Height>
+          <PrintOnFirstPage>true</PrintOnFirstPage>
+          <PrintOnLastPage>true</PrintOnLastPage>
+          <ReportItems>
+            <Textbox Name="txtReportTitle">
+              <CanGrow>true</CanGrow>
+              <KeepTogether>true</KeepTogether>
+              <Paragraphs>
+                <Paragraph>
+                  <TextRuns>
+                    <TextRun>
+                      <Value>=Globals!ReportName</Value>
+                      <Style>
+                        <FontWeight>Bold</FontWeight>
+                        <Color>DimGray</Color>
+                      </Style>
+                    </TextRun>
+                  </TextRuns>
+                  <Style>
+                    <TextAlign>Center</TextAlign>
+                  </Style>
+                </Paragraph>
+              </Paragraphs>
+              <Height>0.75cm</Height>
+              <Width>10.5cm</Width>
+              <Style>
+                <PaddingLeft>2pt</PaddingLeft>
+                <PaddingRight>2pt</PaddingRight>
+                <PaddingTop>2pt</PaddingTop>
+                <PaddingBottom>2pt</PaddingBottom>
+              </Style>
+            </Textbox>
+          </ReportItems>
+          <Style>
+            <Border>
+              <Style>None</Style>
+            </Border>
+          </Style>
+        </PageHeader>
+        <PageHeight>21cm</PageHeight>
+        <PageWidth>29.7cm</PageWidth>
+        <InteractiveHeight>21cm</InteractiveHeight>
+        <InteractiveWidth>29.7cm</InteractiveWidth>
+        <LeftMargin>1cm</LeftMargin>
+        <RightMargin>1cm</RightMargin>
+        <TopMargin>1cm</TopMargin>
+        <BottomMargin>1cm</BottomMargin>
+        <ColumnSpacing>1.27cm</ColumnSpacing>
+        <Style />
+      </Page>
+    </ReportSection>
+  </ReportSections>
+  <ReportParameters>
+    <ReportParameter Name="ReportIsScheduled">
+      <DataType>Boolean</DataType>
+      <DefaultValue>
+        <Values>
+          <Value>false</Value>
+        </Values>
+      </DefaultValue>
+      <Prompt>Report Is Scheduled</Prompt>
+      <Hidden>true</Hidden>
+    </ReportParameter>
+    <ReportParameter Name="PayPeriodCode">
+      <DataType>String</DataType>
+      <Prompt>Pay Period Code</Prompt>
+      <ValidValues>
+        <DataSetReference>
+          <DataSetName>dsPayPeriods</DataSetName>
+          <ValueField>PayPeriodCode</ValueField>
+          <LabelField>PayPeriodDescription</LabelField>
+        </DataSetReference>
+      </ValidValues>
+      <MultiValue>true</MultiValue>
+    </ReportParameter>
+    <ReportParameter Name="YearMonthClosed">
+      <DataType>String</DataType>
+      <DefaultValue>
+        <DataSetReference>
+          <DataSetName>dsCalendarMonths</DataSetName>
+          <ValueField>YearMonthClosed</ValueField>
+        </DataSetReference>
+      </DefaultValue>
+      <Prompt>Select GL Month</Prompt>
+      <ValidValues>
+        <DataSetReference>
+          <DataSetName>dsCalendarMonths</DataSetName>
+          <ValueField>YearMonthClosed</ValueField>
+          <LabelField>YearMonthClosedDescription</LabelField>
+        </DataSetReference>
+      </ValidValues>
+      <MultiValue>true</MultiValue>
+    </ReportParameter>
+    <ReportParameter Name="PaySequence">
+      <DataType>Integer</DataType>
+      <DefaultValue>
+        <DataSetReference>
+          <DataSetName>dsPaySequences</DataSetName>
+          <ValueField>PaySequence</ValueField>
+        </DataSetReference>
+      </DefaultValue>
+      <Prompt>Pay Sequence</Prompt>
+      <ValidValues>
+        <DataSetReference>
+          <DataSetName>dsPaySequences</DataSetName>
+          <ValueField>PaySequence</ValueField>
+          <LabelField>PaySequenceDescription</LabelField>
+        </DataSetReference>
+      </ValidValues>
+      <MultiValue>true</MultiValue>
+      <cl:ComponentMetadata>
+        <cl:HideUpdateNotifications>true</cl:HideUpdateNotifications>
+      </cl:ComponentMetadata>
+    </ReportParameter>
+    <ReportParameter Name="ImportFilePeriodDate">
+      <DataType>DateTime</DataType>
+      <DefaultValue>
+        <Values>
+          <Value>=DateAdd(DateInterval.Day, -1, DateAdd(DateInterval.Month, 1, CDate(Parameters!YearMonthClosed.Value(0) + "-01")))</Value>
+        </Values>
+      </DefaultValue>
+      <Prompt>Set Import File Date</Prompt>
+    </ReportParameter>
+    <ReportParameter Name="IsWageAccrual">
+      <DataType>Boolean</DataType>
+      <DefaultValue>
+        <Values>
+          <Value>false</Value>
+        </Values>
+      </DefaultValue>
+      <Prompt>Is Wage Accrual</Prompt>
+    </ReportParameter>
+    <ReportParameter Name="TotalDaysInGLPeriod">
+      <DataType>Integer</DataType>
+      <Nullable>true</Nullable>
+      <Prompt>Total Days in GL Period</Prompt>
+    </ReportParameter>
+    <ReportParameter Name="DaysToAccrue">
+      <DataType>Integer</DataType>
+      <Nullable>true</Nullable>
+      <Prompt>Days to Accrue</Prompt>
+    </ReportParameter>
+    <ReportParameter Name="IsReversal">
+      <DataType>Integer</DataType>
+      <DefaultValue>
+        <Values>
+          <Value>1</Value>
+        </Values>
+      </DefaultValue>
+      <Prompt>Is Reversal</Prompt>
+      <ValidValues>
+        <ParameterValues>
+          <ParameterValue>
+            <Value>-1</Value>
+            <Label>True</Label>
+          </ParameterValue>
+          <ParameterValue>
+            <Value>1</Value>
+            <Label>False</Label>
+          </ParameterValue>
+        </ParameterValues>
+      </ValidValues>
+    </ReportParameter>
+    <ReportParameter Name="IncludeNonPaying">
+      <DataType>Boolean</DataType>
+      <DefaultValue>
+        <Values>
+          <Value>true</Value>
+        </Values>
+      </DefaultValue>
+      <Prompt>Include Non Paying</Prompt>
+      <Hidden>true</Hidden>
+    </ReportParameter>
+    <ReportParameter Name="CurrencyCode">
+      <DataType>String</DataType>
+      <DefaultValue>
+        <Values>
+          <Value>NZD</Value>
+        </Values>
+      </DefaultValue>
+      <Prompt>Currency Code</Prompt>
+      <Hidden>true</Hidden>
+      <ValidValues>
+        <ParameterValues>
+          <ParameterValue>
+            <Value>NZD</Value>
+            <Label>NZD</Label>
+          </ParameterValue>
+        </ParameterValues>
+      </ValidValues>
+    </ReportParameter>
+    <ReportParameter Name="EntityCode">
+      <DataType>String</DataType>
+      <DefaultValue>
+        <Values>
+          <Value>310</Value>
+        </Values>
+      </DefaultValue>
+      <Prompt>Entity Code</Prompt>
+      <Hidden>true</Hidden>
+    </ReportParameter>
+    <ReportParameter Name="NullGlCode">
+      <DataType>String</DataType>
+      <DefaultValue>
+        <Values>
+          <Value>Unknown GL Report Code</Value>
+        </Values>
+      </DefaultValue>
+      <Prompt>Null Gl Code</Prompt>
+      <Hidden>true</Hidden>
+    </ReportParameter>
+    <ReportParameter Name="AllowanceGroupFilter">
+      <DataType>String</DataType>
+      <DefaultValue>
+        <Values>
+          <Value>ORDHRS4</Value>
+        </Values>
+      </DefaultValue>
+      <Prompt>Allowance Group Filter</Prompt>
+      <Hidden>true</Hidden>
+      <ValidValues>
+        <ParameterValues>
+          <ParameterValue>
+            <Value>GLACCRUALS</Value>
+            <Label>GLACCRUALS</Label>
+          </ParameterValue>
+          <ParameterValue>
+            <Value>ORDHRS4</Value>
+            <Label>ORDHRS4</Label>
+          </ParameterValue>
+        </ParameterValues>
+      </ValidValues>
+    </ReportParameter>
+  </ReportParameters>
+  <Code>Public Function AccrualFactor(ByVal TotalDays As Integer, ByVal AccrueDays As Integer) As Double 
+
+    Dim dblFactor as Double
+
+    dblFactor = AccrueDays / TotalDays 
+
+    Return dblFactor 
+
+End Function 
+</Code>
+  <EmbeddedImages>
+    <EmbeddedImage Name="CorpBrands">
+      <MIMEType>image/jpeg</MIMEType>
+      <ImageData>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</ImageData>
+    </EmbeddedImage>
+  </EmbeddedImages>
+  <Language>en-NZ</Language>
+  <ConsumeContainerWhitespace>true</ConsumeContainerWhitespace>
+  <DataTransform>PipeDelimitedNoHeadersStyle001.xsl</DataTransform>
+  <rd:ReportUnitType>Cm</rd:ReportUnitType>
+  <rd:ReportID>122158e3-d971-416f-a353-b35d777354bc</rd:ReportID>
+</Report>
